@@ -1,0 +1,105 @@
+import { useMemo, useRef, useState } from 'react';
+import { compact, dayLabel, fmt, usd } from '../lib/format.ts';
+import { daysFrom, METRIC_LABEL, metricOf, seriesColor, seriesKey, seriesName, SLOTS, type Metric, type Row } from '../lib/series.ts';
+
+const W = 900, H = 240, PAD_L = 50, PAD_R = 6, PAD_T = 8, PAD_B = 24;
+
+/** Stacked daily columns by model. Marks ≤24px, 2px surface gap between segments, 4px rounded top. */
+export function Chart({ rows, since, metric, colorOf }: { rows: Row[]; since: string; metric: Metric; colorOf: (k: string) => number }) {
+  const wrap = useRef<HTMLDivElement>(null);
+  const [hover, setHover] = useState<{ i: number; x: number; y: number } | null>(null);
+
+  const m = useMemo(() => {
+    const days = daysFrom(since);
+    const group = (k: string) => (colorOf(k) >= SLOTS ? '__other__' : k);
+    const byDay = new Map<string, Map<string, number>>();
+    for (const r of rows) {
+      const g = group(seriesKey(r));
+      const d = byDay.get(r.day!) ?? new Map<string, number>();
+      d.set(g, (d.get(g) ?? 0) + metricOf(r, metric));
+      byDay.set(r.day!, d);
+    }
+    const order = (g: string) => (g === '__other__' ? 99 : colorOf(g));
+    const groups = [...new Set(rows.map((r) => group(seriesKey(r))))].sort((a, b) => order(a) - order(b));
+    const max = Math.max(metric === 'cost' ? 0.01 : 1, ...days.map((d) => [...(byDay.get(d)?.values() ?? [])].reduce((a, b) => a + b, 0)));
+    const p = Math.pow(10, Math.floor(Math.log10(max / 4)));
+    const n = max / 4 / p;
+    const step = (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p;
+    const yMax = Math.ceil(max / step) * step;
+    return { days, byDay, groups, step, yMax };
+  }, [rows, since, metric, colorOf]);
+
+  const color = (g: string) => (g === '__other__' ? seriesColor(SLOTS) : seriesColor(colorOf(g)));
+  const show = (v: number) => (metric === 'cost' ? usd(v) : fmt(Math.round(v)));
+  const innerW = W - PAD_L - PAD_R, innerH = H - PAD_T - PAD_B;
+  const band = innerW / Math.max(m.days.length, 1);
+  const barW = Math.min(24, Math.max(2, band * 0.7));
+  const y = (v: number) => PAD_T + innerH - (v / m.yMax) * innerH;
+  const ticks: number[] = [];
+  for (let i = 0; i * m.step <= m.yMax + m.step / 1e6 && i < 20; i++) ticks.push(i * m.step);
+  const every = Math.ceil(m.days.length / 8);
+  const hovered = hover ? m.days[hover.i] : null;
+  const hoveredVals = hovered ? m.byDay.get(hovered) : undefined;
+
+  return (
+    <div>
+      <div className="flex flex-wrap gap-x-3.5 gap-y-1.5 text-[0.82rem] text-secondary">
+        {m.groups.length ? m.groups.map((g) => (
+          <span key={g} className="inline-flex items-center gap-1.5"><i className="swatch" style={{ background: color(g) }} />{seriesName(g)}</span>
+        )) : <span className="text-muted">No usage in this range</span>}
+      </div>
+      <div ref={wrap} className="relative mt-3" onMouseLeave={() => setHover(null)}>
+        <svg viewBox={`0 0 ${W} ${H}`} className="block w-full h-auto" role="img" aria-label={`${METRIC_LABEL[metric]} per day by model`}>
+          {ticks.map((v) => (
+            <g key={v}>
+              <line x1={PAD_L} x2={W - PAD_R} y1={y(v)} y2={y(v)} stroke="var(--grid)" strokeWidth={1} />
+              <text x={PAD_L - 8} y={y(v) + 4} textAnchor="end" fontSize={11} fill="var(--text-muted)">{metric === 'cost' ? `$${compact(v)}` : compact(v)}</text>
+            </g>
+          ))}
+          {m.days.map((d, i) => {
+            const vals = m.byDay.get(d);
+            const x = PAD_L + band * i + (band - barW) / 2;
+            const segs = vals ? m.groups.filter((g) => (vals.get(g) ?? 0) > 0) : [];
+            let acc = 0;
+            return (
+              <g key={d}>
+                {i % every === 0 && <text x={PAD_L + band * i + band / 2} y={H - 6} textAnchor="middle" fontSize={11} fill="var(--text-muted)">{dayLabel(d)}</text>}
+                {segs.map((g, si) => {
+                  const v = vals!.get(g)!;
+                  const top = y(acc + v), bottom = y(acc);
+                  acc += v;
+                  const h = Math.max(0, bottom - top - (si > 0 ? 2 : 0));
+                  if (h <= 0) return null;
+                  const r = si === segs.length - 1 ? Math.min(4, h, barW / 2) : 0;
+                  return <path key={g} fill={color(g)} d={`M${x},${top + h}V${top + r}Q${x},${top} ${x + r},${top}H${x + barW - r}Q${x + barW},${top} ${x + barW},${top + r}V${top + h}Z`} />;
+                })}
+                <rect
+                  x={PAD_L + band * i} y={PAD_T} width={band} height={innerH}
+                  fill={hover?.i === i ? 'var(--text-primary)' : 'transparent'} fillOpacity={0.05}
+                  onMouseMove={(e) => {
+                    const box = wrap.current!.getBoundingClientRect();
+                    setHover({ i, x: e.clientX - box.left, y: e.clientY - box.top });
+                  }}
+                />
+              </g>
+            );
+          })}
+        </svg>
+        {hover && hovered && (
+          <div
+            className="absolute z-10 pointer-events-none min-w-[190px] bg-surface-1 border border-line rounded-lg px-2.5 py-2 text-[0.8rem] shadow-[0_4px_16px_rgb(0_0_0/0.12)]"
+            style={{ left: Math.min(hover.x + 14, (wrap.current?.clientWidth ?? 0) - 210), top: Math.max(0, hover.y - 90) }}
+          >
+            <div className="text-muted text-[0.75rem] mb-1">{hovered} (UTC)</div>
+            {hoveredVals && m.groups.filter((g) => hoveredVals.has(g)).length ? m.groups.filter((g) => hoveredVals.has(g)).map((g) => (
+              <div key={g} className="flex items-center justify-between gap-3">
+                <span className="inline-flex items-center gap-1.5 text-secondary"><i className="swatch" style={{ background: color(g) }} />{seriesName(g)}</span>
+                <b className="num">{show(hoveredVals.get(g)!)}</b>
+              </div>
+            )) : <div className="text-muted">No usage</div>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

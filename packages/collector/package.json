@@ -1,0 +1,23 @@
+{
+  "name": "tokenburn",
+  "version": "0.3.0",
+  "description": "Collect your AI coding usage (Claude Code, Codex, OpenCode, Gemini CLI, Cursor, ...) locally and publish a privacy-controlled /@username profile.",
+  "type": "module",
+  "bin": {
+    "tokenburn": "./dist/cli.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "build": "esbuild src/cli.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/cli.mjs",
+    "prepublishOnly": "npm run build"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}

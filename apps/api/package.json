@@ -1,0 +1,15 @@
+{
+  "name": "@tokenburn/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npm run build -w @tokenburn/web && wrangler d1 migrations apply tokenburn --local && wrangler dev",
+    "migrate:local": "wrangler d1 migrations apply tokenburn --local",
+    "migrate:remote": "wrangler d1 migrations apply tokenburn --remote",
+    "deploy": "npm run build -w @tokenburn/web && wrangler d1 migrations apply tokenburn --remote && wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260702.1",
+    "wrangler": "^4.152.0"
+  }
+}

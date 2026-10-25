@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "api", "runtimeExecutable": "npx", "runtimeArgs": ["wrangler", "dev", "--config", "apps/api/wrangler.jsonc", "--port", "8787"], "port": 8787 }
+  ]
+}
