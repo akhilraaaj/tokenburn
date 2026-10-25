@@ -162,6 +162,54 @@ export function githubAuthorizeRedirect(env: Env, req: Request): Response {
   });
 }
 
+// ----- Pending sign-up: GitHub said who you are, but no account exists yet -----
+// Accounts are only created after an explicit "Create account" click. GitHub skips its consent page for apps
+// you've already approved, so without this step, clicking "Sign in" after deleting an account would silently
+// create a new one.
+
+const PENDING_COOKIE = 'tb_pending_signup';
+const PENDING_TTL_S = 600;
+const b64url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const fromB64url = (s: string) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+
+async function hmac(secret: string, data: string): Promise<string> {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return b64url(new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data))));
+}
+
+export interface PendingSignup { id: number; login: string; exp: number }
+
+/** `payload.signature`, signed with a server secret so the GitHub identity can't be forged or edited. */
+export async function signPending(secret: string, p: { id: number; login: string }, now = Date.now()): Promise<string> {
+  const payload = b64url(new TextEncoder().encode(JSON.stringify({ id: p.id, login: p.login, exp: now + PENDING_TTL_S * 1000 })));
+  return `${payload}.${await hmac(secret, payload)}`;
+}
+
+export async function verifyPending(secret: string, token: string | null, now = Date.now()): Promise<PendingSignup | null> {
+  if (!token || !secret) return null;
+  const [payload, sig] = token.split('.');
+  if (!payload || !sig) return null;
+  const expected = await hmac(secret, payload);
+  if (expected.length !== sig.length) return null;
+  let diff = 0;
+  for (let i = 0; i < sig.length; i++) diff |= expected.charCodeAt(i) ^ sig.charCodeAt(i);
+  if (diff !== 0) return null;
+  try {
+    const p = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as PendingSignup;
+    return typeof p.id === 'number' && typeof p.login === 'string' && p.exp > now ? p : null;
+  } catch {
+    return null;
+  }
+}
+
+export const pendingCookie = (req: Request, token: string) => `${PENDING_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${PENDING_TTL_S}${secure(req)}`;
+export const clearPendingCookie = (req: Request) => `${PENDING_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure(req)}`;
+export const readPending = (env: Env, req: Request) => verifyPending(env.GITHUB_CLIENT_SECRET ?? '', getCookie(req, PENDING_COOKIE));
+
+export async function findUserByGithub(env: Env, githubId: number) {
+  return env.DB.prepare('SELECT id FROM users WHERE github_id = ?').bind(githubId).first<{ id: string }>();
+}
+
 export const clearStateCookie = (req: Request) => `${STATE_COOKIE}=; Path=/auth; HttpOnly; SameSite=Lax; Max-Age=0${secure(req)}`;
 
 export async function githubCallback(env: Env, req: Request): Promise<{ id: number; login: string }> {

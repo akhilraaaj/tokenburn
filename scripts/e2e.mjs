@@ -130,12 +130,33 @@ step('web dashboard API: highlights (tokens, cost, streaks), rows for all tools,
 assert.equal((await web('PATCH', '/api/web/profile', { is_public: true }, 'https://evil.example')).status, 403);
 step('cross-site mutation rejected');
 
+// Accounts are never created silently from a GitHub redirect: sign-up needs a valid, signed pending token.
+assert.equal((await fetch(`${API}/api/web/pending`)).status, 404);
+const forgedSignup = await fetch(`${API}/api/web/signup`, { method: 'POST', headers: { origin: API, cookie: 'tb_pending_signup=eyJpZCI6MSwibG9naW4iOiJ4IiwiZXhwIjo5OTk5OTk5OTk5OTk5fQ.forged' } });
+assert.equal(forgedSignup.status, 400);
+assert.equal((await fetch(`${API}/api/web/signup`, { method: 'POST', headers: { origin: 'https://evil.example' } })).status, 403);
+step('sign-up requires a signed pending GitHub identity (forged/missing rejected)');
+
+const avail = async (n) => (await web('GET', `/api/web/username-available?name=${encodeURIComponent(n)}`)).json;
+assert.equal((await avail(user)).available, true); // your own current name counts as available
+assert.equal((await avail(`${user}-free`)).available, true);
+assert.deepEqual(await avail('admin'), { available: false, reason: 'That name is reserved' });
+assert.equal((await avail('a!')).available, false);
+assert.equal((await fetch(`${API}/api/web/username-available?name=x`)).status, 401);
+step('username availability check (free, own, reserved, invalid, signed-out)');
+
 assert.equal((await page(`/@${user}`)).status, 404);
 assert.equal((await pub(user)).status, 404);
 cli('profile', 'public');
 let p = await pub(user);
 assert.equal(p.status, 200);
-assert.deepEqual(Object.keys(p.json).sort(), ['display_name', 'shows', 'since', 'username']); // nothing approved yet
+// Only the GitHub account (on by default) is shown until usage fields are approved.
+assert.deepEqual(Object.keys(p.json).sort(), ['display_name', 'github', 'shows', 'since', 'username']);
+assert.equal(p.json.github.avatar_url, `/api/avatar/${user}`);
+cli('profile', 'hide', 'github');
+p = await pub(user);
+assert.deepEqual(Object.keys(p.json).sort(), ['display_name', 'shows', 'since', 'username']); // nothing approved
+assert.equal((await fetch(`${API}/api/avatar/${user}`)).status, 404); // hidden GitHub account: no avatar either
 cli('profile', 'show', 'models');
 p = await pub(user);
 const models = p.json.breakdown.map((b) => b.model_id);

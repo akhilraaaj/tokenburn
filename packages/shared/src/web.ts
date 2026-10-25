@@ -37,6 +37,10 @@ export interface PublicProfile {
   username: string;
   display_name: string | null;
   since: string;
+  /** GitHub login and a same-origin avatar URL, when the owner shows their GitHub account. */
+  github?: { login: string; avatar_url: string };
+  /** First UTC day with usage in the window (null when none); only when the daily trend or streaks are public. */
+  first_day?: string | null;
   daily?: PublicRow[];
   breakdown?: PublicRow[];
   /** Per tool when tools are public, otherwise a single `all` total. */
@@ -72,7 +76,7 @@ export interface DashboardData {
   profile_public: boolean;
 }
 
-export const PROFILE_FLAGS = ['is_public', 'show_providers', 'show_models', 'show_token_totals', 'show_daily_trend', 'show_sessions', 'show_streaks', 'show_costs'] as const;
+export const PROFILE_FLAGS = ['is_public', 'show_providers', 'show_models', 'show_token_totals', 'show_daily_trend', 'show_sessions', 'show_streaks', 'show_costs', 'show_github'] as const;
 export type ProfileFlag = (typeof PROFILE_FLAGS)[number];
 export type ProfileSettings = Record<ProfileFlag, number | boolean> & { display_name: string | null };
 

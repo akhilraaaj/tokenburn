@@ -33,7 +33,7 @@ Everyday
 Public profile (private until you say so)
   tokenburn profile               Show settings and your profile URL
   tokenburn profile public|private
-  tokenburn profile show <fields> Fields: providers, models, tokens, trend, sessions, streaks, costs (comma-separated)
+  tokenburn profile show <fields> Fields: providers, models, tokens, trend, sessions, streaks, costs, github (comma-separated)
   tokenburn profile hide <fields>
   tokenburn profile username <name>
   tokenburn profile name "<display name>"
@@ -60,7 +60,7 @@ Local state: ${stateDir()} (override with TOKENBURN_HOME)`;
 
 const PROFILE_FIELDS: Record<string, string> = {
   providers: 'show_providers', models: 'show_models', tokens: 'show_token_totals', trend: 'show_daily_trend', sessions: 'show_sessions',
-  streaks: 'show_streaks', costs: 'show_costs',
+  streaks: 'show_streaks', costs: 'show_costs', github: 'show_github',
 };
 
 function flag(args: string[], name: string): string | undefined {
@@ -286,7 +286,7 @@ async function statusCmd(store: Store, cfg: Config) {
     const roots = src.roots(ctx);
     console.log(`  ${roots.length ? '✓' : '·'} ${src.label.padEnd(14)} ${roots.length ? `${roots.length} location(s), billing ${src.billing(ctx).mode} (${src.billing(ctx).basis})` : 'not found'}`);
   }
-  console.log(`  ${cfg.cursor_auto_import ? '✓' : '·'} Cursor         ${cfg.cursor_auto_import ? `auto-import from ${cfg.downloads_dir ?? defaultDownloadsDir()}` : 'manual: tokenburn import-cursor FILE (or cursor auto-import on)'}`);
+  console.log(`  ${cfg.cursor_auto_import ? '✓' : '·'} Cursor         ${cfg.cursor_auto_import ? `auto-import from ${cfg.downloads_dir ?? defaultDownloadsDir()}` : 'off: tokenburn cursor auto-import on (or import-cursor FILE)'}`);
   console.log(`  ${cfg.openrouter_key ? '✓' : '·'} OpenRouter     ${cfg.openrouter_key ? `last fetch ${store.getMeta('openrouter_activity_last_fetch_at') ?? 'never'}` : 'not connected (tokenburn connect openrouter)'}`);
   if (cfg.device_token) {
     try {
@@ -306,11 +306,14 @@ async function setup(store: Store, cfg: Config, args: string[]) {
   console.log('\nLooking for AI coding tools on this machine…');
   const c = await collectAll(store, cfg, { network: true });
   c.lines.forEach((l) => console.log(l));
-  if (!c.lines.length) console.log('  none found yet (Claude Code, Grok CLI, Hermes). You can still import Cursor exports.');
+  if (!c.lines.length) console.log('  none found yet. (Cursor usage comes from CSV exports instead.)');
 
   if (!cfg.cursor_auto_import && process.stdin.isTTY) {
-    console.log('\nCursor has no usage API. Export your usage CSV from cursor.com → Dashboard → Usage when you like;');
-    if (await confirm(`Automatically import Cursor exports saved to ${defaultDownloadsDir()}?`)) {
+    console.log('\nUsing Cursor? Cursor doesn\'t share usage with other apps, so tokenburn reads the CSV you download:');
+    console.log('  1. Open cursor.com → Dashboard → Usage and click Export CSV');
+    console.log(`  2. Leave the file in ${defaultDownloadsDir()} (any name; don't move it)`);
+    console.log('  3. Each sync imports new exports. Download a fresh one at least monthly; files older than 45 days are skipped.');
+    if (await confirm(`Import Cursor exports from ${defaultDownloadsDir()} automatically?`)) {
       cfg.cursor_auto_import = true;
       saveConfig(cfg);
       (await collectAll(store, cfg, { network: false })).lines.forEach((l) => console.log(l));
@@ -322,7 +325,7 @@ async function setup(store: Store, cfg: Config, args: string[]) {
   if (args.includes('--no-service')) {
     console.log('\nAutomatic sync not turned on. Run `tokenburn sync` when you like, or `tokenburn service install` later.');
   } else if (runningFromNpxCache()) {
-    console.log('\nTo sync automatically, install it permanently first:\n  npm install -g tokenburn && tokenburn service install');
+    console.log('\nTo sync automatically, install it permanently first:\n  npm install -g use-tokenburn && tokenburn service install');
   } else if (args.includes('--yes') || (await confirm(`\nSync automatically every ${INTERVAL_MIN} minutes? (nothing stays running between syncs)`))) {
     console.log(installService());
   }
@@ -526,7 +529,7 @@ async function main() {
       if (dir) cfg.downloads_dir = dir;
       saveConfig(cfg);
       return console.log(cfg.cursor_auto_import
-        ? `Cursor exports saved to ${cfg.downloads_dir ?? defaultDownloadsDir()} will be imported automatically. Export from cursor.com → Dashboard → Usage.`
+        ? `Cursor auto-import on. Export your usage CSV from cursor.com → Dashboard → Usage and leave it in ${cfg.downloads_dir ?? defaultDownloadsDir()}; the next sync imports it. Files older than 45 days are skipped.`
         : 'Cursor auto-import off.');
     }
 

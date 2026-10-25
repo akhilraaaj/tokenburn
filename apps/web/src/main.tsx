@@ -1,31 +1,50 @@
-import { StrictMode } from 'react';
+import { lazy, StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+import { createBrowserRouter, Navigate, RouterProvider, useLocation } from 'react-router-dom';
 import './index.css';
-import { Layout, SessionProvider } from './components/Layout.tsx';
-import { Card } from './components/ui.tsx';
-import { Dashboard } from './pages/Dashboard.tsx';
-import { Landing } from './pages/Landing.tsx';
-import { Profile } from './pages/Profile.tsx';
-import { Settings } from './pages/Settings.tsx';
+import { Toaster } from '@/components/ui/sonner';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { PublicLayout } from '@/layouts/public-layout';
+import { Landing } from '@/pages/landing';
+import { NotFound } from '@/pages/not-found';
+import { Profile } from '@/pages/profile';
+import { RouteError } from '@/pages/route-error';
+import { Welcome } from '@/pages/welcome';
+import { SessionProvider } from '@/session';
 
-const NotFound = () => <Card><h1 className="text-[1.6rem] font-semibold">Not found</h1><p className="text-secondary">This page doesn't exist.</p></Card>;
+// The signed-in app (sidebar, dialogs, settings) loads only when needed, keeping the landing page and
+// public profiles light.
+const AppLayout = lazy(() => import('@/layouts/app-layout').then((m) => ({ default: m.AppLayout })));
+const Overview = lazy(() => import('@/pages/overview').then((m) => ({ default: m.Overview })));
+const Models = lazy(() => import('@/pages/models').then((m) => ({ default: m.Models })));
+const Machines = lazy(() => import('@/pages/machines').then((m) => ({ default: m.Machines })));
+const Settings = lazy(() => import('@/pages/settings').then((m) => ({ default: m.Settings })));
 
-// /@username: React Router can't match a literal "@" prefix on a dynamic segment, so a splat route checks it.
-function AtRoute() {
-  const seg = decodeURIComponent(location.pathname.slice(1));
-  return seg.startsWith('@') ? <Profile /> : <NotFound />;
+/** /@username — React Router can't match a literal "@" prefix on a dynamic segment, so a catch-all checks it. */
+function AtOrNotFound() {
+  const seg = decodeURIComponent(useLocation().pathname.slice(1));
+  return seg.startsWith('@') && !seg.slice(1).replace(/\/$/, '').includes('/') ? <Profile /> : <NotFound />;
 }
 
 const router = createBrowserRouter([
   {
-    element: <Layout />,
+    element: <Suspense fallback={null}><AppLayout /></Suspense>,
+    errorElement: <RouteError />,
+    children: [
+      { path: '/dashboard', element: <Overview /> },
+      { path: '/dashboard/models', element: <Models /> },
+      { path: '/dashboard/machines', element: <Machines /> },
+      { path: '/dashboard/settings', element: <Settings /> },
+    ],
+  },
+  { path: '/settings', element: <Navigate to="/dashboard/settings" replace /> },
+  {
+    element: <PublicLayout />,
+    errorElement: <RouteError />,
     children: [
       { path: '/', element: <Landing /> },
-      { path: '/dashboard', element: <Dashboard /> },
-      { path: '/settings', element: <Settings /> },
-      { path: '/:username', element: <AtRoute /> },
-      { path: '*', element: <NotFound /> },
+      { path: '/welcome', element: <Welcome /> },
+      { path: '*', element: <AtOrNotFound /> },
     ],
   },
 ]);
@@ -33,7 +52,10 @@ const router = createBrowserRouter([
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <SessionProvider>
-      <RouterProvider router={router} />
+      <TooltipProvider>
+        <RouterProvider router={router} />
+        <Toaster position="bottom-right" />
+      </TooltipProvider>
     </SessionProvider>
   </StrictMode>,
 );

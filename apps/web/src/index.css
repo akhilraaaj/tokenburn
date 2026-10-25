@@ -1,72 +1,156 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
 
-/* Palette: same tokens as before (validated categorical slots; light and dark selected, not flipped). */
+/* Dark mode follows the OS: public/theme.js toggles `.dark` on <html> before first paint. */
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Palette: the project's tokens (validated categorical series; light and dark each selected, not flipped).
+ * shadcn's theme variables below only point at these, so this block is the single source of truth.
+ */
 :root {
   color-scheme: light;
-  --bg: #f6f6f4; --surface-1: #fcfcfb; --surface-2: #f0efec; --border: #e3e2de; --grid: #ebeae6;
-  --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #7a7974;
-  --accent: #2a78d6; --accent-ink: #ffffff; --danger: #c43c3b; --warn-bg: #fff4dc; --warn-ink: #6b4a00;
+  --tb-bg: #f6f6f4;
+  --tb-surface-1: #fcfcfb;
+  --tb-surface-2: #f0efec;
+  --tb-line: #e3e2de;
+  --tb-grid: #ebeae6;
+  --tb-text: #0b0b0b;
+  --tb-text-2: #52514e;
+  --tb-text-3: #7a7974;
+  --tb-brand: #2a78d6;
+  --tb-brand-ink: #ffffff;
+  --tb-danger: #c43c3b;
+  --tb-warn-bg: #fff4dc;
+  --tb-warn-ink: #6b4a00;
   --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
   --series-5: #e87ba4; --series-6: #008300; --series-7: #6250d6; --series-other: #a3a29c;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --bg: #121211; --surface-1: #1a1a19; --surface-2: #232321; --border: #33332f; --grid: #2a2a27;
-    --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
-    --accent: #3987e5; --danger: #e66767; --warn-bg: #3a2f12; --warn-ink: #f3d58a;
-    --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
-    --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-other: #6b6a64;
-  }
-}
-:root[data-theme="dark"] {
+.dark {
   color-scheme: dark;
-  --bg: #121211; --surface-1: #1a1a19; --surface-2: #232321; --border: #33332f; --grid: #2a2a27;
-  --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
-  --accent: #3987e5; --danger: #e66767; --warn-bg: #3a2f12; --warn-ink: #f3d58a;
+  --tb-bg: #121211;
+  --tb-surface-1: #1a1a19;
+  --tb-surface-2: #232321;
+  --tb-line: #33332f;
+  --tb-grid: #2a2a27;
+  --tb-text: #f0efec;
+  --tb-text-2: #c3c2b7;
+  --tb-text-3: #8f8e86;
+  --tb-brand: #3987e5;
+  --tb-brand-ink: #ffffff;
+  --tb-danger: #e66767;
+  --tb-warn-bg: #3a2f12;
+  --tb-warn-ink: #f3d58a;
   --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
   --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-other: #6b6a64;
 }
 
+/* shadcn/ui theme, mapped onto the palette (applies in light and dark automatically). */
+:root, .dark {
+  --radius: 0.625rem;
+  --background: var(--tb-bg);
+  --foreground: var(--tb-text);
+  --card: var(--tb-surface-1);
+  --card-foreground: var(--tb-text);
+  --popover: var(--tb-surface-1);
+  --popover-foreground: var(--tb-text);
+  --primary: var(--tb-brand);
+  --primary-foreground: var(--tb-brand-ink);
+  --secondary: var(--tb-surface-2);
+  --secondary-foreground: var(--tb-text);
+  --muted: var(--tb-surface-2);
+  --muted-foreground: var(--tb-text-2);
+  --accent: var(--tb-surface-2);
+  --accent-foreground: var(--tb-text);
+  --destructive: var(--tb-danger);
+  --border: var(--tb-line);
+  --input: var(--tb-line);
+  --ring: var(--tb-brand);
+  --chart-1: var(--series-1);
+  --chart-2: var(--series-2);
+  --chart-3: var(--series-3);
+  --chart-4: var(--series-4);
+  --chart-5: var(--series-5);
+  --sidebar: var(--tb-surface-1);
+  --sidebar-foreground: var(--tb-text);
+  --sidebar-primary: var(--tb-brand);
+  --sidebar-primary-foreground: var(--tb-brand-ink);
+  --sidebar-accent: var(--tb-surface-2);
+  --sidebar-accent-foreground: var(--tb-text);
+  --sidebar-border: var(--tb-line);
+  --sidebar-ring: var(--tb-brand);
+}
+
 @theme inline {
-  --color-bg: var(--bg);
-  --color-surface-1: var(--surface-1);
-  --color-surface-2: var(--surface-2);
-  --color-line: var(--border);
-  --color-grid: var(--grid);
-  --color-primary: var(--text-primary);
-  --color-secondary: var(--text-secondary);
-  --color-muted: var(--text-muted);
-  --color-accent: var(--accent);
-  --color-accent-ink: var(--accent-ink);
-  --color-danger: var(--danger);
-  --color-warn-bg: var(--warn-bg);
-  --color-warn-ink: var(--warn-ink);
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-heading: var(--font-sans);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  /* Project tokens as utilities (text-subtle, bg-surface-2, border-grid, ...). */
+  --color-surface-2: var(--tb-surface-2);
+  --color-grid: var(--tb-grid);
+  --color-subtle: var(--tb-text-3);
+  --color-brand: var(--tb-brand);
+  --color-warn-bg: var(--tb-warn-bg);
+  --color-warn-ink: var(--tb-warn-ink);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
 }
 
 @layer base {
-  html { font-size: 15px; line-height: 1.5; }
-  body { @apply bg-bg text-primary font-sans; margin: 0; }
-  a { @apply text-accent; }
-  code { @apply font-mono bg-surface-2 rounded px-1.5 py-px text-[0.85em]; }
-  pre { @apply font-mono bg-surface-2 rounded-lg px-3.5 py-3 overflow-x-auto text-[0.85rem] leading-7 m-0; }
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans antialiased;
+  }
+  body {
+    @apply bg-background text-foreground;
+    margin: 0;
+    font-feature-settings: "cv11", "ss01";
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
 }
 
 @layer components {
-  .card { @apply bg-surface-1 border border-line rounded-[10px] p-5 grid gap-3.5 min-w-0; }
-  .tile { @apply bg-surface-1 border border-line rounded-lg px-3.5 py-3 grid gap-0.5 content-start; }
-  .badge { @apply inline-block text-[0.74rem] px-2 py-px rounded-full border border-line text-secondary bg-surface-2 whitespace-nowrap; }
-  .btn { @apply inline-block text-[0.92rem] px-3.5 py-2 rounded-lg border border-line bg-surface-2 text-primary cursor-pointer no-underline disabled:opacity-55 disabled:cursor-default; }
-  .btn-primary { @apply bg-accent border-accent text-accent-ink; }
-  .btn-danger { @apply text-danger; }
-  .input { @apply px-2.5 py-1.5 rounded-lg border border-line bg-surface-1 text-primary min-w-0; font: inherit; }
-  .swatch { @apply inline-block w-2.5 h-2.5 rounded-[3px] flex-none align-middle; }
+  .swatch { @apply inline-block size-2.5 rounded-[3px] flex-none align-middle; }
   .num { font-variant-numeric: tabular-nums; }
-  .table-wrap { @apply overflow-x-auto; }
-  .data-table { @apply w-full border-collapse text-[0.88rem]; }
-  .data-table th, .data-table td { @apply text-left px-2.5 py-2 border-b border-grid whitespace-nowrap; }
-  .data-table th { @apply text-secondary font-medium text-[0.8rem]; }
-  .data-table .r { @apply text-right; }
 }

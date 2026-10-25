@@ -30,7 +30,7 @@ Design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## For users (once deployed)
 
 ```bash
-npm install -g tokenburn
+npm install -g use-tokenburn
 ```
 
 ```bash

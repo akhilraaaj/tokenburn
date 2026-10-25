@@ -2,7 +2,8 @@ import {
   BILLING_MODES, MEASUREMENT_TYPES, PROVIDERS, SOURCE_SCOPE, USAGE_SOURCES, isNonNegInt, isNonNegNumber, validateRecord,
 } from '../../../packages/shared/src/schema.ts';
 import {
-  RESERVED, USERNAME_RE, checkOrigin, clearStateCookie, createDevice, deleteDeviceAndData, devIdentity, endSession, githubAuthorizeRedirect, githubCallback, githubForm,
+  RESERVED, USERNAME_RE, checkOrigin, clearPendingCookie, clearStateCookie, createDevice, deleteDeviceAndData, devIdentity,
+  findUserByGithub, pendingCookie, readPending, signPending, endSession, githubAuthorizeRedirect, githubCallback, githubForm,
   githubUser, requireDevice, sessionUser, startSession, upsertUser, type User,
 } from './auth.ts';
 import { allTimeActivity, dailyRows, highlights, sessionCounts, sinceDays } from './data.ts';
@@ -101,8 +102,13 @@ async function deleteAccountFor(env: Env, userId: string) {
 
 // ----- edge cache for public profiles (60 s; purged on profile/username changes in this location) -----
 const publicCacheKey = (username: string) => new Request(`https://public-cache.internal/${username.toLowerCase()}`);
+const avatarCacheKey = (username: string) => new Request(`https://public-cache.internal/avatar/${username.toLowerCase()}`);
 async function purgePublic(...usernames: (string | null | undefined)[]) {
-  for (const u of usernames) if (u) await caches.default.delete(publicCacheKey(u)).catch(() => false);
+  for (const u of usernames) {
+    if (!u) continue;
+    await caches.default.delete(publicCacheKey(u)).catch(() => false);
+    await caches.default.delete(avatarCacheKey(u)).catch(() => false);
+  }
 }
 
 const deviceList = (env: Env, userId: string) =>
@@ -395,12 +401,15 @@ const PUBLIC_SINCE = () => new Date(Date.now() - 89 * 864e5).toISOString().slice
 /** Only fields the owner explicitly enabled leave the server. */
 async function publicProfile(env: Env, username: string, since: string): Promise<PublicProfile | null> {
   const row = await env.DB.prepare(
-    'SELECT u.id, u.username, p.* FROM users u JOIN profiles p ON p.user_id = u.id WHERE u.username = ? AND p.is_public = 1',
+    'SELECT u.id, u.username, u.github_login, p.* FROM users u JOIN profiles p ON p.user_id = u.id WHERE u.username = ? AND p.is_public = 1',
   ).bind(username.toLowerCase()).first<any>();
   if (!row) return null;
   const daily = await dailyRows(env, row.id, since);
   const shows = { tokens: !!row.show_token_totals, costs: !!row.show_costs, streaks: !!row.show_streaks };
   const out: PublicProfile = { username: row.username, display_name: row.display_name, since, shows };
+  // When tracking started is activity information: only shared alongside the daily trend or streaks.
+  if (row.show_daily_trend || row.show_streaks) out.first_day = daily.reduce<string | null>((min, r) => (min === null || r.day < min ? r.day : min), null);
+  if (row.show_github) out.github = { login: row.github_login, avatar_url: `/api/avatar/${row.username}` };
   const pick = (r: any) => ({
     ...(row.show_providers ? { provider: r.provider, usage_source: r.usage_source } : {}),
     ...(row.show_models ? { model_id: r.model_id } : {}),
@@ -451,10 +460,33 @@ async function cachedPublicProfile(env: Env, ctx: ExecutionContext | undefined, 
   return prof;
 }
 
+/**
+ * GitHub avatar for a public profile that shows its GitHub account, served same-origin so the page's CSP stays
+ * 'self' and viewers' browsers never contact GitHub. Cached for an hour; purged at the edge on profile changes.
+ */
+const publicAvatar: Route = async (req, env, p, ctx) => {
+  const key = avatarCacheKey(p.username);
+  const hit = await caches.default.match(key).catch(() => undefined);
+  if (hit) return hit;
+  const row = await env.DB.prepare(
+    'SELECT u.github_id FROM users u JOIN profiles p ON p.user_id = u.id WHERE u.username = ? AND p.is_public = 1 AND p.show_github = 1',
+  ).bind(p.username.toLowerCase()).first<{ github_id: number }>();
+  if (!row) throw new HttpError(404, 'Not found');
+  const gh = await fetch(`https://avatars.githubusercontent.com/u/${row.github_id}?s=160&v=4`).catch(() => null);
+  const type = gh?.headers.get('content-type') ?? '';
+  if (!gh?.ok || !/^image\/(png|jpeg|gif|webp)$/.test(type)) throw new HttpError(404, 'Not found');
+  const res = new Response(gh.body, {
+    headers: { 'content-type': type, 'cache-control': 'public, max-age=3600', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'" },
+  });
+  const put = caches.default.put(key, res.clone()).catch(() => {});
+  if (ctx) ctx.waitUntil(put); else await put;
+  return res;
+};
+
 const publicProfileJson: Route = async (req, env, p, ctx) => {
   const prof = await cachedPublicProfile(env, ctx, p.username);
   if (!prof) throw new HttpError(404, 'Profile not found');
-  return json(prof, 200, { 'cache-control': 'public, max-age=60', 'access-control-allow-origin': '*' });
+  return json(prof, 200, { 'cache-control': 'no-cache', 'access-control-allow-origin': '*' });
 };
 
 // ---------- web app (cookie session; the SPA in apps/web calls these) ----------
@@ -498,6 +530,16 @@ const webSettings: Route = async (req, env) => {
 const webSetUsername: Route = async (req, env) => {
   const u = await requireWebUser(req, env);
   return json({ username: await setUsernameFor(env, u.id, (await readJson(req)).username) });
+};
+
+/** Live availability check for the onboarding/settings username field. */
+const webUsernameAvailable: Route = async (req, env) => {
+  const u = await requireWebUser(req, env);
+  const name = (new URL(req.url).searchParams.get('name') ?? '').trim().toLowerCase();
+  if (!USERNAME_RE.test(name)) return json({ available: false, reason: '3–30 characters: a–z, 0–9, _ or -, starting with a letter or digit' });
+  if (RESERVED.has(name)) return json({ available: false, reason: 'That name is reserved' });
+  const taken = await env.DB.prepare('SELECT 1 FROM users WHERE username = ? AND id != ?').bind(name, u.id).first();
+  return json(taken ? { available: false, reason: 'Already taken' } : { available: true });
 };
 
 const webUpdateProfile: Route = async (req, env) => json(await updateProfileFor(env, (await requireWebUser(req, env)).id, await readJson(req)));
@@ -549,8 +591,37 @@ const authCallback: Route = async (req, env) => {
     console.error('github callback', e);
     return signinError('failed');
   }
-  const u = await upsertUser(env, gh.id, gh.login);
-  return redirect('/dashboard', [await startSession(env, req, u.id), clearStateCookie(req)]);
+  const existing = await findUserByGithub(env, gh.id);
+  if (existing) {
+    await upsertUser(env, gh.id, gh.login); // refreshes the stored GitHub login
+    return redirect('/dashboard', [await startSession(env, req, existing.id), clearStateCookie(req)]);
+  }
+  // No account for this GitHub user: ask before creating one (see auth.ts, "Pending sign-up").
+  return redirect('/welcome', [pendingCookie(req, await signPending(env.GITHUB_CLIENT_SECRET!, gh)), clearStateCookie(req)]);
+};
+
+/** The GitHub identity waiting for confirmation, if any (for the /welcome page). */
+const webPending: Route = async (req, env) => {
+  const p = await readPending(env, req);
+  if (!p) throw new HttpError(404, 'No pending sign-up');
+  return json({ github_login: p.login });
+};
+
+/** Creates the account for the pending GitHub identity and signs in. */
+const webSignup: Route = async (req, env) => {
+  checkOrigin(req);
+  const p = await readPending(env, req);
+  if (!p) throw new HttpError(400, 'This sign-up expired. Sign in with GitHub again.');
+  const u = await upsertUser(env, p.id, p.login); // also safe if the account was created meanwhile
+  const h = new Headers({ 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...SECURITY_HEADERS });
+  h.append('set-cookie', await startSession(env, req, u.id));
+  h.append('set-cookie', clearPendingCookie(req));
+  return new Response(JSON.stringify({ ok: true, created: u.created }), { headers: h });
+};
+
+const webSignupCancel: Route = async (req) => {
+  checkOrigin(req);
+  return json({ ok: true }, 200, { 'set-cookie': clearPendingCookie(req) });
 };
 
 /** /@username: the SPA shell with this profile's title and share-preview tags. */
@@ -564,8 +635,8 @@ const profileShell: Route = async (req, env, p, ctx) => {
     : withMeta(res, { title: 'Not found · tokenburn', noindex: true });
 };
 
-/** Same policy as apps/web/public/_headers (static assets). */
-const CSP = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+/** Same policy as apps/web/public/_headers. Inline styles are allowed (UI libraries inject <style>; CSS cannot run code); scripts are same-origin only. */
+const CSP = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
 
 /** Daily housekeeping: expired sign-ins/sessions, old sync history, old rate-limit windows. */
 async function cleanup(env: Env) {
@@ -607,9 +678,13 @@ const routes: [string, RegExp, Route][] = [
   ['GET', /^\/auth\/callback$/, authCallback],
   ['GET', /^\/(?:@|%40)(?<username>[\w-]+)\/?$/, profileShell],
   ['GET', /^\/api\/web\/session$/, webSession],
+  ['GET', /^\/api\/web\/pending$/, webPending],
+  ['POST', /^\/api\/web\/signup$/, webSignup],
+  ['POST', /^\/api\/web\/signup\/cancel$/, webSignupCancel],
   ['GET', /^\/api\/web\/dashboard$/, webDashboard],
   ['GET', /^\/api\/web\/settings$/, webSettings],
   ['PUT', /^\/api\/web\/username$/, webSetUsername],
+  ['GET', /^\/api\/web\/username-available$/, webUsernameAvailable],
   ['PATCH', /^\/api\/web\/profile$/, webUpdateProfile],
   ['DELETE', /^\/api\/web\/devices\/(?<id>[\w-]+)$/, webDeleteDevice],
   ['DELETE', /^\/api\/web\/data$/, webDeleteData],
@@ -629,6 +704,7 @@ const routes: [string, RegExp, Route][] = [
   ['POST', /^\/api\/ingest\/sessions$/, ingestSessions],
   ['POST', /^\/api\/ingest\/events$/, ingestEvents],
   ['GET', /^\/api\/public\/(?<username>[\w-]+)$/, publicProfileJson],
+  ['GET', /^\/api\/avatar\/(?<username>[\w-]+)$/, publicAvatar],
 ];
 
 export default {
