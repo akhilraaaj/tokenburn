@@ -8,9 +8,33 @@ export interface Env {
   GITHUB_CLIENT_SECRET?: string;
   /** "1" only in local .dev.vars: enables the no-GitHub dev login on localhost. */
   DEV_LOGIN?: string;
-  /** Cloudflare rate-limit bindings (see wrangler.jsonc). Optional so tests/dev without them still run. */
+  /** Workers rate-limit bindings, if deployed as a Worker. On Pages they don't exist and D1 is used instead. */
   LOGIN_LIMITER?: RateLimit;
   INGEST_LIMITER?: RateLimit;
+}
+
+const LIMITS = { login: { limit: 10, windowS: 60 }, ingest: { limit: 60, windowS: 60 } } as const;
+
+/**
+ * Fixed-window rate limit. Uses the Workers binding when present; otherwise a single atomic D1 upsert
+ * (one row write per call), since Cloudflare Pages has no rate-limiting binding. Throws 429 when exceeded.
+ */
+export async function rateLimit(env: Env, kind: keyof typeof LIMITS, key: string) {
+  const binding = kind === 'login' ? env.LOGIN_LIMITER : env.INGEST_LIMITER;
+  if (binding) {
+    const { success } = await binding.limit({ key });
+    if (!success) throw new HttpError(429, 'Too many requests. Try again in a minute.');
+    return;
+  }
+  const { limit, windowS } = LIMITS[kind];
+  const windowStart = Math.floor(Date.now() / 1000 / windowS) * windowS;
+  const row = await env.DB.prepare(
+    `INSERT INTO rate_limits (key, window_start, count) VALUES (?1, ?2, 1)
+     ON CONFLICT (key) DO UPDATE SET count = CASE WHEN window_start = excluded.window_start THEN count + 1 ELSE 1 END,
+       window_start = excluded.window_start
+     RETURNING count`,
+  ).bind(`${kind}:${key}`, windowStart).first<{ count: number }>();
+  if ((row?.count ?? 0) > limit) throw new HttpError(429, 'Too many requests. Try again in a minute.');
 }
 
 export const SECURITY_HEADERS: Record<string, string> = {
@@ -19,12 +43,7 @@ export const SECURITY_HEADERS: Record<string, string> = {
   'x-frame-options': 'DENY',
 };
 
-/** Applies a rate limit if the binding exists; throws 429 when exceeded. */
-export async function rateLimit(limiter: RateLimit | undefined, key: string) {
-  if (!limiter) return;
-  const { success } = await limiter.limit({ key });
-  if (!success) throw new HttpError(429, 'Too many requests. Try again in a minute.');
-}
+
 
 export class HttpError extends Error {
   status: number;

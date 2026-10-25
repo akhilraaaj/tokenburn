@@ -15,7 +15,7 @@
     "dev:api": "npm run dev -w @tokenburn/api",
     "dev:web": "npm run dev -w @tokenburn/web",
     "collector": "node packages/collector/src/cli.ts",
-    "build:cli": "npm run build -w tokenburn"
+    "build:cli": "npm run build -w use-tokenburn"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

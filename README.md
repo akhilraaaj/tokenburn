@@ -104,29 +104,29 @@ Build the npm bundle (`packages/collector/dist/cli.mjs`):
 npm run build:cli
 ```
 
-## Deploy
+## Deploy (Cloudflare Pages)
 
-1. Create a GitHub OAuth App (github.com/settings/developers):
-   * Homepage URL: your Worker URL. Authorization callback URL: `https://<your-worker>/auth/callback`.
-   * Tick **Enable Device Flow** (used by the CLI).
-   * Put its Client ID in `apps/api/wrangler.jsonc` → `vars.GITHUB_CLIENT_ID`, and store the client secret
-     (used only for dashboard sign-in) as a Worker secret:
+The site, API and `/@username` previews deploy as one **Cloudflare Pages** project
+(`https://tokenburn.pages.dev`). `npm run build -w @tokenburn/api` builds the React app into
+`apps/web/dist` and bundles the API into `apps/web/dist/_worker.js` (Pages "advanced mode").
+
+1. Log in: `cd apps/api && npx wrangler login`
+2. Database (once): `npx wrangler d1 create tokenburn`, then put the `database_id` in `apps/api/wrangler.jsonc`.
+3. Create the Pages project (once): `npx wrangler pages project create tokenburn --production-branch main`
+   (your URL is `https://<project>.pages.dev`; Cloudflare adds a suffix if the name is taken).
+4. GitHub OAuth app (github.com/settings/developers → New OAuth App): homepage `https://tokenburn.pages.dev`,
+   callback `https://tokenburn.pages.dev/auth/callback`, tick **Enable Device Flow**. Put the Client ID in
+   `apps/api/wrangler.jsonc` (`vars.GITHUB_CLIENT_ID`) and store the secret:
+   `npx wrangler pages secret put GITHUB_CLIENT_SECRET --project-name tokenburn`
+5. Deploy (applies D1 migrations, builds, uploads): `npm run deploy -w @tokenburn/api`
+6. Set `DEFAULT_API_URL` in `packages/collector/src/config.ts` to your pages.dev URL, then publish the CLI:
    ```bash
-   npx wrangler secret put GITHUB_CLIENT_SECRET --config apps/api/wrangler.jsonc
+   npm publish -w use-tokenburn --access public
    ```
-2. Create the database and put its id in `apps/api/wrangler.jsonc`:
-   ```bash
-   npx wrangler d1 create tokenburn
-   ```
-3. Deploy:
-   ```bash
-   npm run deploy -w @tokenburn/api
-   ```
-4. Set `DEFAULT_API_URL` in `packages/collector/src/config.ts` to your Worker URL, then publish the CLI
-   (the `tokenburn` npm name may be taken; rename in `packages/collector/package.json` if so):
-   ```bash
-   npm publish -w tokenburn
-   ```
+
+Pages has no rate-limiting binding or cron triggers, so the API rate-limits in D1 (`rate_limits` table) and
+runs its daily cleanup opportunistically from upload traffic. Deployed as a plain Worker instead, the same code
+uses the Workers rate-limit bindings if configured.
 
 ## Known limitations
 

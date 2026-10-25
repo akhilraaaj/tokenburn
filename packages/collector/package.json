@@ -1,10 +1,10 @@
 {
-  "name": "tokenburn",
-  "version": "0.3.0",
+  "name": "use-tokenburn",
+  "version": "0.3.1",
   "description": "Collect your AI coding usage (Claude Code, Codex, OpenCode, Gemini CLI, Cursor, ...) locally and publish a privacy-controlled /@username profile.",
   "type": "module",
   "bin": {
-    "tokenburn": "./dist/cli.mjs"
+    "tokenburn": "dist/cli.mjs"
   },
   "files": [
     "dist"

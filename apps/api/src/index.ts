@@ -39,7 +39,7 @@ const MAX_ACCOUNT_EVENTS_PER_USER = 500_000;
 const MAX_HEALTH_BYTES = 4000;
 
 /** Sign-in failures go back to the app as a fixed code, never free text from the URL. */
-const signinError = (code: 'not_configured' | 'failed' | 'expired') => redirect(`/?error=${code}`);
+const signinError = (code: 'not_configured' | 'failed' | 'expired' | 'rate_limited') => redirect(`/?error=${code}`);
 
 // ---------- shared account operations (CLI API and dashboard forms) ----------
 
@@ -117,7 +117,7 @@ function safeJson(s: string | null): any {
 // ---------- CLI login (server-mediated GitHub device flow; the GitHub token never reaches the CLI) ----------
 
 const loginStart: Route = async (req, env) => {
-  await rateLimit(env.LOGIN_LIMITER, `start:${clientIp(req)}`);
+  await rateLimit(env, 'login', `start:${clientIp(req)}`);
   const body = await readJson(req);
   const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim().slice(0, 60) : 'Collector';
   const previousTokenHash = typeof body.previous_token === 'string' && body.previous_token ? await sha256Hex(body.previous_token) : null;
@@ -141,7 +141,7 @@ const loginStart: Route = async (req, env) => {
 };
 
 const loginPoll: Route = async (req, env) => {
-  await rateLimit(env.INGEST_LIMITER, `poll:${clientIp(req)}`);
+  await rateLimit(env, 'ingest', `poll:${clientIp(req)}`);
   const { login_id } = await readJson(req);
   const h = await sha256Hex(String(login_id ?? ''));
   const row = await env.DB.prepare('SELECT * FROM login_requests WHERE login_id_hash = ?').bind(h)
@@ -246,7 +246,7 @@ function validBucket(b: any): boolean {
 
 const ingestDaily: Route = async (req, env) => {
   const d = await requireDevice(req, env);
-  await rateLimit(env.INGEST_LIMITER, `ingest:${d.id}`);
+  await rateLimit(env, 'ingest', `ingest:${d.id}`);
   const body = await readJson(req);
   const buckets: any[] = Array.isArray(body.buckets) ? body.buckets : [];
   const deletes: any[] = Array.isArray(body.deletes) ? body.deletes : [];
@@ -306,7 +306,7 @@ const ingestDaily: Route = async (req, env) => {
 
 const ingestSessions: Route = async (req, env) => {
   const d = await requireDevice(req, env);
-  await rateLimit(env.INGEST_LIMITER, `ingest:${d.id}`);
+  await rateLimit(env, 'ingest', `ingest:${d.id}`);
   const { sessions } = await readJson(req);
   if (!Array.isArray(sessions) || sessions.length > MAX_BATCH) throw new HttpError(400, 'Invalid sessions');
   const ok = sessions.every((s: any) =>
@@ -329,7 +329,7 @@ const ingestSessions: Route = async (req, env) => {
 /** Account-scoped events (Cursor CSV, OpenRouter), deduped per user by dedupe_key. */
 const ingestEvents: Route = async (req, env) => {
   const d = await requireDevice(req, env);
-  await rateLimit(env.INGEST_LIMITER, `ingest:${d.id}`);
+  await rateLimit(env, 'ingest', `ingest:${d.id}`);
   const { events } = await readJson(req, 5_000_000);
   if (!Array.isArray(events) || events.length > MAX_EVENT_BATCH) throw new HttpError(400, `Send 1–${MAX_EVENT_BATCH} events per request`);
   for (let i = 0; i < events.length; i++) {
@@ -529,7 +529,7 @@ const webLogout: Route = async (req, env) => {
 // ---------- sign-in redirects ----------
 
 const loginPage: Route = async (req, env) => {
-  await rateLimit(env.LOGIN_LIMITER, `web:${clientIp(req)}`);
+  await rateLimit(env, 'login', `web:${clientIp(req)}`);
   if (await sessionUser(req, env)) return redirect('/dashboard');
   const dev = new URL(req.url).searchParams.get('dev');
   if (dev) {
@@ -567,15 +567,37 @@ const profileShell: Route = async (req, env, p, ctx) => {
 /** Same policy as apps/web/public/_headers (static assets). */
 const CSP = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
 
-/** Daily housekeeping (cron in wrangler.jsonc): expired sign-ins/sessions, old sync history. */
+/** Daily housekeeping: expired sign-ins/sessions, old sync history, old rate-limit windows. */
 async function cleanup(env: Env) {
   const t = now();
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM rate_limits WHERE window_start < ?').bind(Math.floor(Date.now() / 1000) - 3600),
     env.DB.prepare('DELETE FROM login_requests WHERE expires_at < ?').bind(t),
     env.DB.prepare('DELETE FROM auth_sessions WHERE expires_at < ?').bind(t),
     env.DB.prepare('DELETE FROM sync_log WHERE at < ?').bind(new Date(Date.now() - 90 * 864e5).toISOString()),
     env.DB.prepare('DELETE FROM usage_sessions WHERE last_at < ?').bind(new Date(Date.now() - 730 * 864e5).toISOString()),
   ]);
+}
+
+/**
+ * Pages has no cron triggers, so cleanup piggybacks on traffic: a small share of upload requests check
+ * when it last ran and, if more than a day ago, run it after the response is sent.
+ */
+async function maybeCleanup(env: Env) {
+  const last = await env.DB.prepare("SELECT value FROM app_meta WHERE key = 'last_cleanup'").first<{ value: string }>();
+  if (last && Date.now() - Date.parse(last.value) < 864e5) return;
+  await env.DB.prepare("INSERT INTO app_meta (key, value) VALUES ('last_cleanup', ?1) ON CONFLICT (key) DO UPDATE SET value = ?1").bind(now()).run();
+  await cleanup(env);
+}
+
+/** Static files and SPA routes, with the same security headers as the Worker's own responses. */
+async function serveAsset(req: Request, env: Env): Promise<Response> {
+  const res = await env.ASSETS.fetch(req);
+  const out = new Response(res.body, res);
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) out.headers.set(k, v);
+  if ((out.headers.get('content-type') ?? '').includes('text/html')) out.headers.set('content-security-policy', CSP);
+  if (new URL(req.url).protocol === 'https:') out.headers.set('strict-transport-security', 'max-age=31536000; includeSubDomains');
+  return out;
 }
 
 // ---------- router ----------
@@ -613,6 +635,7 @@ export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
     const isApi = url.pathname.startsWith('/api/');
+    if (url.pathname.startsWith('/api/ingest/') && Math.random() < 0.02) ctx.waitUntil(maybeCleanup(env).catch(() => {}));
     for (const [method, re, handler] of routes) {
       const m = re.exec(url.pathname);
       if (m && (req.method === method || (method === 'GET' && req.method === 'HEAD'))) {
@@ -622,12 +645,12 @@ export default {
           if (!(e instanceof HttpError)) console.error(e);
           const status = e instanceof HttpError ? e.status : 500;
           const message = e instanceof HttpError ? e.message : 'Internal error';
-          return isApi ? json({ error: message }, status) : signinError(status === 503 ? 'not_configured' : 'failed');
+          return isApi ? json({ error: message }, status) : signinError(status === 503 ? 'not_configured' : status === 429 ? 'rate_limited' : 'failed');
         }
       }
     }
     if (isApi) return json({ error: 'Not found' }, 404);
-    return env.ASSETS.fetch(req); // SPA routes and static files
+    return serveAsset(req, env); // SPA routes and static files
   },
   async scheduled(_event, env, ctx) {
     ctx.waitUntil(cleanup(env));

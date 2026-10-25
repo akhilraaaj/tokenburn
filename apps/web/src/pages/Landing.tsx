@@ -10,6 +10,7 @@ export function Landing() {
     not_configured: 'GitHub sign-in is not configured on this server yet.',
     failed: 'Sign-in with GitHub failed or was cancelled. Please try again.',
     expired: 'That sign-in link expired. Please try again.',
+    rate_limited: 'Too many sign-in attempts. Wait a minute and try again.',
   };
   const error = ERRORS[params.get('error') ?? ''];
   return (
@@ -30,7 +31,7 @@ export function Landing() {
           <h2 className="font-semibold">Collected on your machine</h2>
           <p className="text-secondary">A small terminal app reads your tools' local usage records and uploads only daily totals per model.
             Prompts, code, file paths and API keys never leave your computer.</p>
-          <pre>npx tokenburn setup</pre>
+          <pre>npx use-tokenburn setup</pre>
         </Card>
         <Card>
           <h2 className="font-semibold">Private until you share</h2>

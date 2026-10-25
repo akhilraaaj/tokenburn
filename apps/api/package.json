@@ -3,13 +3,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "npm run build -w @tokenburn/web && wrangler d1 migrations apply tokenburn --local && wrangler dev",
+    "build": "npm run build -w @tokenburn/web && esbuild src/index.ts --bundle --format=esm --platform=neutral --target=es2022 --outfile=../web/dist/_worker.js",
+    "dev": "npm run build && wrangler d1 migrations apply tokenburn --local && wrangler pages dev --port 8787",
     "migrate:local": "wrangler d1 migrations apply tokenburn --local",
     "migrate:remote": "wrangler d1 migrations apply tokenburn --remote",
-    "deploy": "npm run build -w @tokenburn/web && wrangler d1 migrations apply tokenburn --remote && wrangler deploy"
+    "deploy": "npm run build && wrangler d1 migrations apply tokenburn --remote && wrangler pages deploy --project-name tokenburn --branch main --commit-dirty=true"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260702.1",
+    "esbuild": "^0.28.2",
     "wrangler": "^4.152.0"
   }
 }

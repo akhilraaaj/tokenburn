@@ -137,7 +137,7 @@ function GetStarted({ origin, login }: { origin: string; login: string }) {
       <p className="text-secondary">Usage lives on the computer where you code, so a small collector runs there. It needs Node.js 22.18 or newer.</p>
       <ol className="list-decimal pl-5 grid gap-3.5">
         <li className="grid gap-2"><p>Install and run setup. It signs in with the same GitHub account, previews what it found and asks before uploading anything.</p>
-          <pre>{'npm install -g tokenburn\ntokenburn setup'}</pre></li>
+          <pre>{'npm install -g use-tokenburn\ntokenburn setup'}</pre></li>
         <li className="grid gap-2"><p>Using a local or self-hosted server? Point the collector at it:</p><pre>tokenburn setup --api {origin}</pre></li>
         <li><p>Cursor has no usage API: export your usage CSV from cursor.com → Dashboard → Usage, and setup can import new exports from Downloads automatically.</p></li>
       </ol>

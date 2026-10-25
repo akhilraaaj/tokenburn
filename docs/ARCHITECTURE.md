@@ -1,8 +1,9 @@
 # Architecture
 
 The `tokenburn` terminal app collects and syncs. The web app (`apps/web`: Vite + React + Tailwind) has a
-landing page, a private dashboard, settings and the public `/@username` profile; it is served by the same
-Worker as static assets and talks to `/api/web/*` (cookie session) and `/api/public/*`. For `/@username` the
+landing page, a private dashboard, settings and the public `/@username` profile. Everything deploys as one
+Cloudflare Pages project: the API (`apps/api/src`) is bundled to `_worker.js` in the site build ("advanced
+mode"), so it receives every request and serves the React app's files and talks to `/api/web/*` (cookie session) and `/api/public/*`. For `/@username` the
 Worker injects the title and Open Graph tags into the HTML shell so shared links unfurl. Both the CLI and the
 web sign in with the same GitHub OAuth app.
 
@@ -99,7 +100,8 @@ the first sync interactively. `tokenburn watch` remains available for real-time 
   event when first priced (`events.est_cost_usd`), so price-list updates never rewrite or re-upload history.
   Scheduled runs skip all work and network when nothing changed (a 6-hour check-in remains); a manual
   `sync` always contacts the server. `delete --provider` clears only that tool's parse state.
-* **Limits:** Workers rate limiting on sign-in (per IP) and ingest (per device); real-date validation
+* **Limits:** rate limiting on sign-in (per IP) and ingest (per device): a fixed-window counter in D1 on
+  Pages (no rate-limit binding there), or the Workers binding when deployed as a Worker; real-date validation
   (2020-01-01 to tomorrow); per-account caps (200k daily rows, 500k account events); event batches ≤ 500;
   health JSON ≤ 4 KB.
 * **Privacy:** the public API is fixed at 90 days; best-day tokens and per-tool session counts are shown only
@@ -107,7 +109,7 @@ the first sync interactively. `tokenburn watch` remains available for real-time 
 * **Web:** CSP, `frame-ancestors 'none'`, nosniff, referrer policy and HSTS (`apps/web/public/_headers` and
   the Worker); `__Host-` session cookie in production; OAuth state cookie cleared after use; sign-in errors as fixed codes.
 * **Storage/cost:** `usage_daily` and `usage_sessions` are `WITHOUT ROWID`; device and account deletes remove
-  child rows by their primary-key prefix (no table scans); daily cron prunes expired sign-ins and sessions,
+  child rows by their primary-key prefix (no table scans); daily cleanup (opportunistic from upload traffic on Pages, which has no cron) prunes expired sign-ins and sessions,
   90-day sync history and sessions older than two years; public profiles are edge-cached for 60 s; logs sampled at 10%.
 
 ### Known limits and next steps at scale

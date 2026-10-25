@@ -37,6 +37,11 @@ async function web(method, p, body, origin = API) {
     headers: { ...(cookie ? { cookie } : {}), ...(body ? { 'content-type': 'application/json' } : {}), ...(method !== 'GET' ? { origin } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
+  // The sign-in rate limit (10/min per IP) may still be full from an earlier run: wait for the next window.
+  if (res.status === 303 && (res.headers.get('location') ?? '').includes('rate_limited')) {
+    await new Promise((r) => setTimeout(r, 61_000 - (Date.now() % 60_000)));
+    return web(method, p, body, origin);
+  }
   const sc = res.headers.get('set-cookie');
   if (sc) cookie = sc.split(';')[0].endsWith('=') ? '' : sc.split(';')[0];
   const text = await res.text();
@@ -63,10 +68,11 @@ fs.writeFileSync(codexFile, [
   { timestamp: '2026-10-02T09:00:05.000Z', type: 'event_msg', payload: { type: 'token_count', info: { total_token_usage: u, last_token_usage: u } } },
 ].map((x) => JSON.stringify(x)).join('\n') + '\n');
 
-// GitHub login reports clearly when the server has no OAuth app configured.
+// GitHub CLI login: with no OAuth app configured the server says so (503); with one, it returns a device code.
 const gh = await fetch(`${API}/api/login/start`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"name":"x"}' });
-assert.equal(gh.status, 503);
-step('GitHub login without GITHUB_CLIENT_ID → 503 with explanation');
+const ghBody = await gh.json();
+assert.ok(gh.status === 503 || (gh.status === 200 && /^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(ghBody.user_code)), `login/start ${gh.status} ${JSON.stringify(ghBody)}`);
+step(gh.status === 503 ? 'GitHub login not configured → 503 with explanation' : 'GitHub device flow starts against the real OAuth app (code issued)');
 
 const user = `e2e${Date.now().toString(36)}`;
 let w = await web('GET', '/dashboard');

@@ -1,21 +1,10 @@
 {
 	"$schema": "../../node_modules/wrangler/config-schema.json",
+	// Cloudflare Pages project: serves apps/web/dist, whose _worker.js (bundled from src/index.ts by
+	// `npm run build`) handles the API, sign-in and /@username share previews ("advanced mode").
 	"name": "tokenburn",
-	"main": "src/index.ts",
+	"pages_build_output_dir": "../web/dist",
 	"compatibility_date": "2026-09-01",
-	"assets": {
-		"directory": "../web/dist",
-		"binding": "ASSETS",
-		"not_found_handling": "single-page-application",
-		// API, sign-in redirects and profile pages (for share-preview tags) go to the Worker first.
-		"run_worker_first": [
-			"/api/*",
-			"/login",
-			"/auth/*",
-			"/@*",
-			"/%40*"
-		]
-	},
 	"d1_databases": [
 		{
 			"binding": "DB",
@@ -26,34 +15,5 @@
 	],
 	"vars": {
 		"GITHUB_CLIENT_ID": "Ov23liArlRUBSZpfMjnx"
-	},
-	// Free Workers rate limiting (period must be 10 or 60 seconds). namespace_id is any unique integer per account.
-	"ratelimits": [
-		{
-			"name": "LOGIN_LIMITER",
-			"namespace_id": "4101",
-			"simple": {
-				"limit": 10,
-				"period": 60
-			}
-		},
-		{
-			"name": "INGEST_LIMITER",
-			"namespace_id": "4102",
-			"simple": {
-				"limit": 60,
-				"period": 60
-			}
-		}
-	],
-	// Daily cleanup of expired sign-ins/sessions and old sync history.
-	"triggers": {
-		"crons": [
-			"17 3 * * *"
-		]
-	},
-	"observability": {
-		"enabled": true,
-		"head_sampling_rate": 0.1
 	}
 }
