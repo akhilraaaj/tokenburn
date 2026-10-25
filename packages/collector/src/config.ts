@@ -5,7 +5,7 @@ import type { BillingMode, Provider } from '../../shared/src/index.ts';
 import { stateDir } from './paths.ts';
 
 /** Where `setup`/`login` connect unless --api or TOKENBURN_API_URL says otherwise. Set this when you deploy. */
-export const DEFAULT_API_URL = 'http://localhost:8787';
+export const DEFAULT_API_URL = 'https://tokenburn.akhilraaaj7.workers.dev/';
 
 export interface Config {
   api_url: string;
