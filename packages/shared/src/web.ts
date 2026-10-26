@@ -1,4 +1,5 @@
 // Shapes exchanged between the Worker's JSON endpoints and the web app.
+import type { ContributionDay } from './activity.ts';
 
 export interface DailyRow {
   provider: string;
@@ -42,6 +43,8 @@ export interface PublicProfile {
   /** First UTC day with usage in the window (null when none); only when the daily trend or streaks are public. */
   first_day?: string | null;
   daily?: PublicRow[];
+  /** Active days over the past year for the contribution graph; only when the daily trend is public. */
+  contributions?: ContributionDay[];
   breakdown?: PublicRow[];
   /** Per tool when tools are public, otherwise a single `all` total. */
   sessions?: Record<string, number>;

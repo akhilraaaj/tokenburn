@@ -6,7 +6,8 @@ import {
   findUserByGithub, pendingCookie, readPending, signPending, endSession, githubAuthorizeRedirect, githubCallback, githubForm,
   githubUser, requireDevice, sessionUser, startSession, upsertUser, type User,
 } from './auth.ts';
-import { allTimeActivity, dailyRows, highlights, sessionCounts, sinceDays } from './data.ts';
+import { allTimeActivity, allTimeDays, dailyRows, highlights, sessionCounts, sinceDays } from './data.ts';
+import { activityStats, contributionDays } from '../../../packages/shared/src/activity.ts';
 import { PROFILE_FLAGS, type DashboardData, type PublicProfile } from '../../../packages/shared/src/web.ts';
 import { profileDescription, withMeta } from './meta.ts';
 import { HttpError, SECURITY_HEADERS, json, now, rateLimit, randomToken, readJson, sha256Hex, type Env } from './util.ts';
@@ -416,7 +417,12 @@ async function publicProfile(env: Env, username: string, since: string): Promise
     ...(shows.tokens ? { input_tokens: r.input_tokens, output_tokens: r.output_tokens, cache_read_tokens: r.cache_read_tokens, cache_write_tokens: r.cache_write_tokens } : {}),
     ...(shows.costs ? { cost_usd: r.cost_usd, unpriced_events: r.unpriced_events } : {}),
   });
-  if (row.show_daily_trend) out.daily = daily.map((r) => ({ day: r.day, events: r.events, ...pick(r) }));
+  // One history read serves both the contribution graph (past year) and the streak highlights.
+  const history = row.show_daily_trend || shows.tokens || shows.costs || shows.streaks ? await allTimeDays(env, row.id) : [];
+  if (row.show_daily_trend) {
+    out.daily = daily.map((r) => ({ day: r.day, events: r.events, ...pick(r) }));
+    out.contributions = contributionDays(history, shows.tokens);
+  }
   if (row.show_models || row.show_providers || shows.tokens || shows.costs) {
     const groups = new Map<string, any>();
     for (const r of daily) {
@@ -435,7 +441,7 @@ async function publicProfile(env: Env, username: string, since: string): Promise
     out.sessions = row.show_providers ? counts : { all: Object.values(counts).reduce((a, b) => a + b, 0) };
   }
   if (shows.tokens || shows.costs || shows.streaks) {
-    const h = highlights(daily, await allTimeActivity(env, row.id));
+    const h = highlights(daily, activityStats(history));
     out.highlights = {
       ...(shows.tokens ? { totalTokens: h.totalTokens } : {}),
       ...(shows.costs ? { costUsd: h.costUsd, billedUsd: h.billedUsd } : {}),

@@ -1,5 +1,5 @@
 // Read-side queries shared by the dashboard, the public profile and the CLI summary.
-import { activityStats, type ActivityStats } from '../../../packages/shared/src/activity.ts';
+import { activityStats, type ActivityStats, type DayTotal } from '../../../packages/shared/src/activity.ts';
 import { rowTokens, type DailyRow, type Highlights } from '../../../packages/shared/src/web.ts';
 import type { Env } from './util.ts';
 
@@ -37,8 +37,11 @@ export async function sessionCounts(env: Env, userId: string, since: string): Pr
   return Object.fromEntries(results.map((r) => [r.provider, r.sessions]));
 }
 
-/** Streaks need all history, not just the visible window: one row per active day across every source. */
-export async function allTimeActivity(env: Env, userId: string): Promise<ActivityStats> {
+/**
+ * Streaks and the contribution graph need all history, not just the visible window: requests and tokens per UTC
+ * day across every source.
+ */
+export async function allTimeDays(env: Env, userId: string): Promise<DayTotal[]> {
   const { results } = await env.DB.prepare(
     `SELECT day, SUM(events) AS events, SUM(tokens) AS tokens FROM (
        SELECT day, event_count AS events,
@@ -49,8 +52,12 @@ export async function allTimeActivity(env: Env, userId: string): Promise<Activit
               COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0) + COALESCE(cache_read_tokens, 0) + COALESCE(cache_write_tokens, 0)
        FROM account_events WHERE user_id = ?1
      ) GROUP BY day`,
-  ).bind(userId).all<{ day: string; events: number; tokens: number }>();
-  return activityStats(results);
+  ).bind(userId).all<DayTotal>();
+  return results;
+}
+
+export async function allTimeActivity(env: Env, userId: string): Promise<ActivityStats> {
+  return activityStats(await allTimeDays(env, userId));
 }
 
 export function sinceDays(req: Request, fallback = 90) {

@@ -54,3 +54,31 @@ export function activityStats(days: DayTotal[], today = new Date().toISOString()
 
 export const totalTokens = (r: { input_tokens?: number | null; output_tokens?: number | null; cache_read_tokens?: number | null; cache_write_tokens?: number | null }) =>
   (r.input_tokens ?? 0) + (r.output_tokens ?? 0) + (r.cache_read_tokens ?? 0) + (r.cache_write_tokens ?? 0);
+
+/** Days in the contribution graph: 52 full weeks plus the current one, like GitHub's. */
+export const CONTRIBUTION_DAYS = 371;
+
+/**
+ * Active days for the public contribution graph, oldest first: the last CONTRIBUTION_DAYS days only, and tokens
+ * only when the owner shares token totals.
+ */
+export function contributionDays(days: DayTotal[], withTokens: boolean, today = new Date().toISOString().slice(0, 10)): ContributionDay[] {
+  const from = new Date(Date.parse(today + 'T00:00:00Z') - (CONTRIBUTION_DAYS - 1) * 864e5).toISOString().slice(0, 10);
+  const byDay = new Map<string, DayTotal>();
+  for (const d of days) {
+    if (d.day < from || d.day > today) continue;
+    const prev = byDay.get(d.day);
+    byDay.set(d.day, prev ? { day: d.day, events: prev.events + d.events, tokens: prev.tokens + d.tokens } : { ...d });
+  }
+  return [...byDay.values()]
+    .filter((d) => d.events > 0)
+    .sort((a, b) => (a.day < b.day ? -1 : 1))
+    .map((d) => ({ day: d.day, events: d.events, ...(withTokens ? { tokens: d.tokens } : {}) }));
+}
+
+export interface ContributionDay {
+  day: string;
+  events: number;
+  /** Present only when token totals are public. */
+  tokens?: number;
+}

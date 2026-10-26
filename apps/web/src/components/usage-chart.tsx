@@ -1,16 +1,33 @@
-import { useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { compact, dayLabel, fmt, usd } from '@/lib/format.ts';
 import { daysFrom, METRIC_LABEL, metricOf, seriesColor, seriesKey, seriesName, SLOTS, type Metric, type Row } from '@/lib/series.ts';
 
-const W = 900, H = 240, PAD_L = 46, PAD_R = 4, PAD_T = 8, PAD_B = 24;
+const PAD_L = 46, PAD_R = 4, PAD_T = 8, PAD_B = 24;
 
 /**
  * Stacked daily columns by model. Marks ≤24px wide, 2px surface gap between segments, 4px rounded top,
  * hairline grid. Series past the last categorical slot fold into "Other" (never a generated hue).
  */
-export function UsageChart({ rows, since, metric, colorOf }: { rows: Row[]; since: string; metric: Metric; colorOf: (k: string) => number }) {
+export function UsageChart({ rows, since, metric, colorOf, height: H = 240 }: {
+  rows: Row[];
+  since: string;
+  metric: Metric;
+  colorOf: (k: string) => number;
+  /** Plot height in px; the width always follows the container, so labels render at their real size. */
+  height?: number;
+}) {
   const wrap = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<{ i: number; x: number; y: number } | null>(null);
+  const [W, setW] = useState(900);
+  useLayoutEffect(() => {
+    const el = wrap.current;
+    if (!el) return;
+    const measure = () => { if (el.clientWidth) setW(el.clientWidth); };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const m = useMemo(() => {
     const days = daysFrom(since);
@@ -39,7 +56,8 @@ export function UsageChart({ rows, since, metric, colorOf }: { rows: Row[]; sinc
   const y = (v: number) => PAD_T + innerH - (v / m.yMax) * innerH;
   const ticks: number[] = [];
   for (let i = 0; i * m.step <= m.yMax + m.step / 1e6 && i < 20; i++) ticks.push(i * m.step);
-  const every = Math.ceil(m.days.length / 7);
+  // Roughly one date label per 80px, so they never crowd on narrow screens.
+  const every = Math.ceil(m.days.length / Math.max(2, Math.floor(innerW / 80)));
   const hovered = hover ? m.days[hover.i] : null;
   const hoveredVals = hovered ? m.byDay.get(hovered) : undefined;
   const hoveredGroups = hoveredVals ? m.groups.filter((g) => hoveredVals.has(g)) : [];

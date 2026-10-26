@@ -26,7 +26,7 @@ const FLAGS: [keyof ProfileSettings, string, string][] = [
   ['show_providers', 'Tools', 'Which tools you use and their data source'],
   ['show_models', 'Models', 'Which models you use, with request counts'],
   ['show_token_totals', 'Token totals', 'Input, output, cache and total tokens'],
-  ['show_daily_trend', 'Daily trend', 'Day-by-day activity chart'],
+  ['show_daily_trend', 'Daily trend', 'Day-by-day chart (90 days) and contribution graph (past year)'],
   ['show_sessions', 'Session count', 'Number of sessions'],
   ['show_streaks', 'Streaks & best day', 'Current and longest streak, best day'],
   ['show_costs', 'Estimated cost', 'API list-price estimate, not your bill'],

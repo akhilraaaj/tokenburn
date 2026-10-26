@@ -153,4 +153,10 @@
 @layer components {
   .swatch { @apply inline-block size-2.5 rounded-[3px] flex-none align-middle; }
   .num { font-variant-numeric: tabular-nums; }
+
+  /* Landing page: the looping tools marquee. */
+  .marquee { mask-image: linear-gradient(to right, transparent, #000 12%, #000 88%, transparent); }
+  .marquee-track { animation: marquee 40s linear infinite; }
+  @keyframes marquee { to { transform: translateX(-50%); } }
+  @media (prefers-reduced-motion: reduce) { .marquee-track { animation: none; } }
 }

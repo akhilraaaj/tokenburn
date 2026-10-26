@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activityStats, aggregateDaily, compactPriceList, estimateCost, findPrice, type UsageRecord } from '../src/index.ts';
+import { activityStats, aggregateDaily, contributionDays, CONTRIBUTION_DAYS, compactPriceList, estimateCost, findPrice, type UsageRecord } from '../src/index.ts';
 
 // Shape copied from LiteLLM's model_prices_and_context_window.json entries (values as of 2026-10-25).
 const table = compactPriceList({
@@ -72,6 +72,31 @@ describe('activity stats', () => {
 });
 
 import { uploadModelId } from '../src/index.ts';
+
+describe('contribution days', () => {
+  const today = '2026-10-26';
+  const days = [
+    { day: '2025-10-01', events: 3, tokens: 30 }, // older than the window
+    { day: '2025-10-21', events: 1, tokens: 10 }, // first day in the window (today - 370)
+    { day: '2026-03-02', events: 0, tokens: 0 }, // no requests: not active
+    { day: '2026-10-25', events: 2, tokens: 5 },
+    { day: '2026-10-25', events: 1, tokens: 7 }, // same day from another source
+    { day: '2026-10-27', events: 4, tokens: 1 }, // in the future
+  ];
+  it('keeps the last 52 weeks of active days, merged per day, oldest first', () => {
+    expect(CONTRIBUTION_DAYS).toBe(371);
+    expect(contributionDays(days, true, today)).toEqual([
+      { day: '2025-10-21', events: 1, tokens: 10 },
+      { day: '2026-10-25', events: 3, tokens: 12 },
+    ]);
+  });
+  it('leaves tokens out unless token totals are public', () => {
+    expect(contributionDays(days, false, today)).toEqual([
+      { day: '2025-10-21', events: 1 },
+      { day: '2026-10-25', events: 3 },
+    ]);
+  });
+});
 
 describe('uploadModelId', () => {
   it('keeps normal and provider-prefixed ids verbatim', () => {

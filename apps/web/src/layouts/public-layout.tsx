@@ -22,6 +22,13 @@ export function PublicLayout() {
       <header className="sticky top-0 z-20 border-b bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between px-4 sm:px-6">
           <Wordmark to={user ? '/dashboard' : '/'} />
+          {pathname === '/' && (
+            <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
+              {[['#profile', 'Profile'], ['#features', 'Features'], ['#how', 'How it works'], ['#privacy', 'Privacy'], ['#faq', 'FAQ']].map(([href, label]) => (
+                <a key={href} href={href} className="transition-colors hover:text-foreground">{label}</a>
+              ))}
+            </nav>
+          )}
           {!loading && (user ? (
             <Button asChild size="sm" variant="outline"><Link to="/dashboard">Dashboard</Link></Button>
           ) : (
