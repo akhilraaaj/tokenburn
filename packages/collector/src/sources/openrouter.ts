@@ -51,7 +51,7 @@ export function activityToRecord(r: OpenRouterActivityRow): UsageRecord | null {
 
 export async function fetchOpenRouterActivity(key: string): Promise<OpenRouterActivityRow[]> {
   const res = await fetch('https://openrouter.ai/api/v1/activity', { headers: { authorization: `Bearer ${key}` } });
-  if (res.status === 401 || res.status === 403) throw new Error('OpenRouter rejected the key. /activity needs a management key (openrouter.ai/settings/management-keys).');
+  if (res.status === 401 || res.status === 403) throw new Error('OpenRouter didn\'t accept that key. It must be a management key (not a regular API key): openrouter.ai/settings/management-keys');
   if (!res.ok) throw new Error(`OpenRouter /activity returned ${res.status}`);
   const body = (await res.json()) as { data?: OpenRouterActivityRow[] };
   return Array.isArray(body.data) ? body.data : [];

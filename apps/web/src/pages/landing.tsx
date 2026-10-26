@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ArrowDown, ArrowRight, AtSign, BarChart3, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight, CloudUpload, Coins, Flame, Globe, Laptop, Layers, Lock, RefreshCw, Terminal,
@@ -27,9 +27,13 @@ const INSTALL = 'npm install -g use-tokenburn && tokenburn setup';
 const TOOLS = ['Claude Code', 'Codex CLI', 'Cursor', 'OpenCode', 'Gemini CLI', 'Grok CLI', 'Hermes Agent', 'OpenRouter'];
 
 const STEPS = [
-  { title: 'Install the CLI', body: 'One npm package. Works on macOS, Linux and Windows with Node 22.18+.', command: 'npm install -g use-tokenburn' },
-  { title: 'Run setup', body: 'Sign in with GitHub, see what was found and exactly what will upload, then say yes.', command: 'tokenburn setup' },
-  { title: 'Code as usual', body: 'It syncs every 30 minutes on its own. Check your numbers anytime, or share your profile.', command: 'tokenburn stats' },
+  { title: 'Install the CLI', body: 'One small npm package for macOS, Linux and Windows (Node 22.18+).', command: 'npm install -g use-tokenburn' },
+  {
+    title: 'Run setup',
+    body: 'Five guided steps: sign in with GitHub, see which tools were found, review exactly what uploads, then turn on auto sync.',
+    command: 'tokenburn setup',
+  },
+  { title: 'Code as usual', body: 'It syncs every 30 minutes on its own. See your numbers in the terminal, and publish your profile when you like.', command: 'tokenburn stats' },
 ];
 
 /** Example model mix for the profile preview and the models tile. */
@@ -353,7 +357,7 @@ export function Landing() {
 
         {/* How it works */}
         <section id="how" className="grid scroll-mt-20 grid-cols-1 gap-10">
-          <SectionHeading label="How it works" icon={Terminal} title="Up and running in a minute" sub="Three steps, then it takes care of itself. Pick a step to see it in the terminal." />
+          <SectionHeading label="How it works" icon={Terminal} title="Up and running in a minute" sub="Three steps, then it takes care of itself. Pick a step to watch it run in the terminal." />
           <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
             <ol className="relative grid gap-2">
               {/* The rail connecting the step numbers fills in up to the selected step. */}
@@ -623,55 +627,203 @@ function HeroDashboard({ rows, since, colorOf, handle }: { rows: Row[]; since: s
   );
 }
 
-function TerminalDemo({ handle, step }: { handle: string; step: number }) {
-  const scripts: [string, ReactNode][][] = [
+type TermLine = { cmd: string } | { out: ReactNode; gap?: boolean };
+
+// Colors of the real CLI (packages/collector/src/ui.ts).
+const T = {
+  dim: (s: ReactNode) => <span className="text-[var(--term-dim)]">{s}</span>,
+  blue: (s: ReactNode) => <span className="text-[var(--term-blue)]">{s}</span>,
+  orange: (s: ReactNode) => <span className="text-[var(--term-orange)]">{s}</span>,
+  green: (s: ReactNode) => <span className="text-[var(--term-green)]">{s}</span>,
+  cyan: (s: ReactNode) => <span className="text-[var(--term-cyan)]">{s}</span>,
+  bold: (s: ReactNode) => <span className="font-semibold text-[var(--term-text)]">{s}</span>,
+  link: (s: ReactNode) => <span className="text-[var(--term-blue)] underline underline-offset-2">{s}</span>,
+};
+const ok = (s: ReactNode) => <>{T.green('✔')} {s}</>;
+const ask = (q: ReactNode, hint: string, answer: string) => <>{T.blue('?')} {T.bold(q)} {T.dim(hint)} {answer}</>;
+const logo = <>{T.blue('▃▅')}{T.orange('█')} {T.bold('tokenburn')}</>;
+const stepTitle = (n: number, title: string) => <>{T.bold(T.blue(`${n}/5`))}  {T.bold(title)}</>;
+
+/** A rounded panel like the CLI's boxes; drawn with CSS so it lines up at any width. */
+function TermBox({ title, tone = 'var(--term-line)', children }: { title: ReactNode; tone?: string; children: ReactNode }) {
+  return (
+    <span className="relative my-1.5 grid gap-0.5 rounded-lg border px-3 pt-3 pb-2" style={{ borderColor: tone }}>
+      <span className="absolute -top-2.5 left-2 bg-[var(--term-bg)] px-1.5">{title}</span>
+      {children}
+    </span>
+  );
+}
+
+function terminalScripts(handle: string, host: string): TermLine[][] {
+  return [
     [
-      ['cmd', <><span className="text-subtle">$</span> npm install -g use-tokenburn</>],
-      ['dim', 'added 1 package in 3s'],
-      ['ok', <>Installed. Next: <span className="text-foreground">tokenburn setup</span></>],
+      { cmd: 'npm install -g use-tokenburn' },
+      { out: T.dim('added 1 package in 2s') },
+      { cmd: 'tokenburn' },
+      { out: <>{logo} {T.dim('0.3.1')}</> },
+      { out: T.dim('Your AI coding usage across tools. Collected on this machine, shared only if you choose.') },
+      { out: <>{T.bold('New here?')} One command does everything:</>, gap: true },
+      { out: <>  {T.dim('tokenburn')} {T.cyan('setup')}    {T.dim('Sign in, find your tools, first upload, auto sync')}</> },
     ],
     [
-      ['cmd', <><span className="text-subtle">$</span> tokenburn setup</>],
-      ['ok', <>Signed in with GitHub as <span className="text-foreground">@{handle}</span></>],
-      ['dim', 'Found on this machine:'],
-      ['dim', '  Claude Code   412 sessions'],
-      ['dim', '  Codex CLI      96 sessions'],
-      ['dim', '  Cursor        usage export'],
-      ['ask', <>Upload daily totals per model? <span className="text-subtle">(prompts & code stay local)</span> <span className="text-foreground">Yes</span></>],
-      ['ok', 'Auto-sync on, every 30 minutes'],
+      { cmd: 'tokenburn setup' },
+      { out: <>{logo} {T.dim('setup')}</> },
+      { out: T.dim('Five quick steps. Nothing is uploaded until you approve it.') },
+      { out: stepTitle(1, 'Sign in with GitHub'), gap: true },
+      {
+        out: (
+          <TermBox title={T.bold('Sign in with GitHub')}>
+            <span>{T.dim('1.')} Open      {T.link('github.com/login/device')}</span>
+            <span>{T.dim('2.')} Enter     {T.bold(T.orange('WDJB-MJHT'))}</span>
+          </TermBox>
+        ),
+      },
+      { out: ok(<>Signed in as {T.bold(handle)}</>) },
+      { out: stepTitle(2, 'Find your AI coding tools'), gap: true },
+      { out: <>  {ok(<>Claude Code  {T.dim('412 files · 18,204 new requests')}</>)}</> },
+      { out: <>  {ok(<>Codex CLI    {T.dim('96 files · 3,118 new requests')}</>)}</> },
+      { out: stepTitle(3, 'Cursor (optional)'), gap: true },
+      { out: ask('Do you use Cursor? Turn on auto-import?', '(y/N)', 'y') },
+      { out: ok('Cursor auto-import on') },
+      { out: stepTitle(4, 'Review and upload'), gap: true },
+      {
+        out: (
+          <TermBox title={T.bold('What gets uploaded')}>
+            <span>{T.green('✔')} Uploaded   {T.dim('daily totals per model, hashed session ids')}</span>
+            <span><span className="text-[var(--term-red)]">✖</span> Never      {T.dim('prompts, code, file paths, project names')}</span>
+          </TermBox>
+        ),
+      },
+      { out: ask('Upload this to your account?', '(y/N)', 'y') },
+      { out: ok('Synced 64 daily totals · 412 sessions') },
+      { out: stepTitle(5, 'Automatic sync'), gap: true },
+      { out: ask('Turn on automatic sync?', '(Y/n)', '') },
+      { out: ok('Automatic sync on: every 30 minutes') },
+      {
+        out: (
+          <TermBox title={T.green(T.bold("✔ You're all set"))} tone="var(--term-green)">
+            <span>{T.dim('Profile')}     {T.link(`${host}/@${handle}`)} {T.dim('(private)')}</span>
+            <span>{T.dim('Auto sync')}   on, every 30 min</span>
+          </TermBox>
+        ),
+        gap: true,
+      },
     ],
     [
-      ['cmd', <><span className="text-subtle">$</span> tokenburn stats</>],
-      ['dim', 'Last 30 days'],
-      ['dim', '  Tokens        412M      Est. cost   $186'],
-      ['dim', '  Streak        12 days   Best day    Oct 19'],
-      ['ok', 'Synced 4 minutes ago'],
-      ['link', <>{window.location.host}/@{handle}</>],
+      { cmd: 'tokenburn stats' },
+      { out: <>{T.bold('Your usage · last 30 days')} {T.dim('(UTC, this machine)')}</> },
+      { out: <>  {T.bold('412M')} total tokens</> },
+      { out: <>  {T.bold('$186')} estimated cost {T.dim('(API list prices, not your bill)')}</> },
+      { out: <>  Best day Oct 19 · current streak {T.bold('12 days')} · longest 21 days</> },
+      { out: <>{T.orange('■')} {T.bold('Claude Code')}  {T.dim('local transcripts')}</>, gap: true },
+      { out: <>  {T.blue('▂▃▅▇▆▃▅█▇▅▃▆▇█▅▆')}  {T.dim('output/day')}</> },
+      { cmd: 'tokenburn profile public' },
+      { out: ok('Your profile is now public') },
+      { out: <>  {T.dim('Profile')}     {T.link(`${host}/@${handle}`)}</> },
+      { out: <>  {T.dim('Visibility')}  {T.green('● Public')}</> },
     ],
   ];
+}
+
+const prefersReducedMotion = () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/**
+ * The real CLI output for each step, typed out once the terminal scrolls into view: commands character by
+ * character, output line by line. Reduced-motion users get the finished screen.
+ */
+function TerminalDemo({ handle, step }: { handle: string; step: number }) {
+  const lines = useMemo(() => terminalScripts(handle, window.location.host), [handle]);
+  const script = lines[step];
+  // Timeline: a command costs one tick per character plus a pause; an output line costs a few ticks.
+  const timeline = useMemo(() => {
+    let t = 0;
+    return script.map((l) => {
+      const start = t;
+      t += 'cmd' in l ? l.cmd.length + 12 : 4;
+      return start;
+    });
+  }, [script]);
+  const total = timeline.length ? timeline[timeline.length - 1] + 4 : 0;
+  const wrap = useRef<HTMLDivElement>(null);
+  const body = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+  const [tick, setTick] = useState(0);
+  const [run, setRun] = useState(0);
+
+  useEffect(() => {
+    const el = wrap.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => e.isIntersecting && setVisible(true), { threshold: 0.3 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!visible) return;
+    if (prefersReducedMotion()) {
+      setTick(total);
+      return;
+    }
+    setTick(0);
+    const id = setInterval(() => setTick((t) => (t >= total ? t : t + 1)), 28);
+    return () => clearInterval(id);
+  }, [visible, step, total, run]);
+
+  // Follow the output as it grows, like a terminal does.
+  useEffect(() => {
+    const el = body.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [tick]);
+
+  const done = tick >= total;
   return (
-    <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
-      <div className="flex items-center gap-2 border-b bg-surface-2/50 px-4 py-2.5">
-        <span className="size-2.5 rounded-full bg-border" />
-        <span className="size-2.5 rounded-full bg-border" />
-        <span className="size-2.5 rounded-full bg-border" />
-        <span className="ml-3 font-mono text-xs text-subtle">~ zsh</span>
-        <span className="ml-auto text-xs text-subtle">Step {step + 1} of {scripts.length}</span>
+    <div ref={wrap} className="overflow-hidden rounded-xl border border-[var(--term-line)] bg-[var(--term-bg)] text-[var(--term-text)] shadow-lg">
+      <div className="flex items-center gap-2 border-b border-[var(--term-line)] bg-[var(--term-bar)] px-4 py-2.5">
+        <span className="size-2.5 rounded-full bg-[#ff5f57]" />
+        <span className="size-2.5 rounded-full bg-[#febc2e]" />
+        <span className="size-2.5 rounded-full bg-[#28c840]" />
+        <span className="ml-3 font-mono text-xs text-[var(--term-dim)]">~ zsh</span>
+        <button
+          type="button"
+          onClick={() => setRun((r) => r + 1)}
+          className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-[var(--term-dim)] transition-colors hover:text-[var(--term-text)]"
+          aria-label="Replay"
+        >
+          <RefreshCw className="size-3" />Replay
+        </button>
       </div>
-      <pre key={step} className="grid min-h-72 content-start gap-1 overflow-x-auto p-5 font-mono text-[0.8rem] leading-relaxed text-muted-foreground animate-in fade-in duration-300">
-        {scripts[step].map(([kind, text], i) => (
-          <span key={i} className={cn(kind === 'cmd' && 'pb-1 font-medium text-foreground', kind === 'link' && 'text-brand')}>
-            {kind === 'ok' && <span style={{ color: 'var(--series-3)' }}>✓ </span>}
-            {kind === 'ask' && <span style={{ color: 'var(--series-4)' }}>? </span>}
-            {kind === 'link' && '→ '}
-            {text}
-          </span>
-        ))}
-        <span className="inline-block h-4 w-2 animate-pulse bg-foreground/70" />
-      </pre>
+      <div
+        ref={body}
+        className="h-[26rem] overflow-y-auto overscroll-contain p-5 font-mono text-[0.78rem] leading-relaxed [scrollbar-width:thin]"
+        aria-label={`Terminal showing ${STEPS[step].command}`}
+      >
+        <div key={`${step}-${run}`} className="grid content-start gap-0.5">
+          {script.map((l, i) => {
+            if (tick < timeline[i]) return null;
+            if ('cmd' in l) {
+              const typed = l.cmd.slice(0, tick - timeline[i]);
+              const typing = typed.length < l.cmd.length;
+              return (
+                <span key={i} className={cn('whitespace-pre-wrap', i > 0 && 'mt-3')}>
+                  <span className="text-[var(--term-green)]">➜</span> <span className="text-[var(--term-cyan)]">~</span> {typed}
+                  {typing && <Caret />}
+                </span>
+              );
+            }
+            return <span key={i} className={cn('whitespace-pre-wrap', l.gap && 'mt-2.5')}>{l.out}</span>;
+          })}
+          {done && (
+            <span className="mt-3">
+              <span className="text-[var(--term-green)]">➜</span> <span className="text-[var(--term-cyan)]">~</span> <Caret />
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
+
+const Caret = () => <span className="inline-block h-3.5 w-[7px] translate-y-0.5 animate-pulse bg-[var(--term-text)]/80" />;
 
 /** One stage of the data flow in the privacy section, tinted with its stage color. */
 function FlowCard({ icon: Icon, color, step, title, body, items, local = false }: {

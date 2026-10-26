@@ -44,7 +44,7 @@ const HELP_SECTIONS: [string, HelpRow[]][] = [
     ['cursor auto-import on | off', 'Import Cursor CSVs from your Downloads folder'],
     ['import-cursor <file.csv>', 'Import one Cursor CSV right now'],
     ['scan', 'Preview what would be uploaded (uploads nothing)'],
-    ['connect openrouter', 'Add OpenRouter usage (needs a management key)'],
+    ['connect openrouter', 'Add OpenRouter: paste a key once, then it syncs itself'],
     ['disconnect openrouter', 'Remove the saved OpenRouter key'],
     ['config set billing-mode <tool> <mode>', 'subscription, api, unknown or auto'],
     ['config add-dir <tool> <dir>', 'Read a tool\'s logs from an extra folder'],
@@ -477,7 +477,7 @@ async function statusCmd(store: Store, cfg: Config) {
     ? [sym.ok, 'Cursor', `auto-import from ${home(cfg.downloads_dir ?? defaultDownloadsDir())}`]
     : [sym.off, c.dim('Cursor'), `${c.dim('off')}  ${c.dim('→')} ${ui.cmd('tokenburn cursor auto-import on')}`]);
   lines.push(cfg.openrouter_key
-    ? [sym.ok, 'OpenRouter', `last fetched ${ago(store.getMeta('openrouter_activity_last_fetch_at'))}`]
+    ? [sym.ok, 'OpenRouter', `connected · last checked ${ago(store.getMeta('openrouter_activity_last_fetch_at'))} · every 6 h`]
     : [sym.off, c.dim('OpenRouter'), `${c.dim('not connected')}  ${c.dim('→')} ${ui.cmd('tokenburn connect openrouter')}`]);
   const w = Math.max(...lines.map(([, l]) => ui.visibleLength(l)));
   for (const [s, l, d] of lines) ui.log(`  ${s} ${ui.padEnd(l, w)}  ${d}`);
@@ -520,6 +520,7 @@ async function setup(store: Store, cfg: Config, args: string[]) {
     ui.warn('No supported tools found yet.');
     ui.note('Supported: Claude Code, Codex CLI, OpenCode, Gemini CLI, Grok CLI, Hermes. Use one, then run `tokenburn sync`.');
   }
+  if (!cfg.openrouter_key) ui.hint('Use OpenRouter? Connect it anytime (one key, then it syncs on its own):', 'tokenburn connect openrouter');
 
   ui.step(3, TOTAL, 'Cursor (optional)');
   if (cfg.cursor_auto_import) ui.ok(`Cursor auto-import is on (${home(cfg.downloads_dir ?? defaultDownloadsDir())})`);
@@ -811,18 +812,21 @@ async function main() {
         ui.ok('OpenRouter key removed from this machine.');
         return ui.note('Rows already uploaded stay until you run `tokenburn delete --provider openrouter`.');
       }
-      ui.log(`${c.bold('Connect OpenRouter')}`);
-      ui.note('OpenRouter usage comes from its activity API, which needs a management key:');
-      ui.log(`  ${ui.link('https://openrouter.ai/settings/management-keys')}`);
-      ui.note('The key stays on this machine (~/.tokenburn/config.json, readable only by you) and is sent only to openrouter.ai.');
-      ui.warn('A management key can create and delete API keys. Keep it private.');
-      const key = await askSecret('Paste your management key:');
-      if (!key) return ui.info('Cancelled.');
-      const r = await ui.withSpinner('Checking the key…', () => collectOpenRouter(store, key));
+      ui.log(c.bold('Connect OpenRouter'));
+      ui.log(`  ${c.dim('1.')} Create a ${c.bold('management key')} at ${ui.link('openrouter.ai/settings/management-keys')}`);
+      ui.log(`  ${c.dim('2.')} Paste it below. After that, usage syncs on its own ${c.dim('(checked every 6 hours)')}`);
+      ui.note('OpenRouter shares the last 30 days, so connect soon to keep a full history. One machine is enough.');
+      ui.note('The key stays on this machine, readable only by you, and is only ever sent to openrouter.ai.');
+      ui.log();
+      const key = await askSecret('Management key:');
+      if (!key) return ui.info('Cancelled. Nothing saved.');
+      const r = await ui.withSpinner('Checking the key with OpenRouter…', () => collectOpenRouter(store, key));
       cfg.openrouter_key = key;
       saveConfig(cfg);
-      ui.ok(`Connected. Pulled ${plural(r.rows, 'daily row')} from the last 30 days.`);
-      return ui.note('They upload on the next sync.');
+      ui.ok(`OpenRouter connected · ${plural(r.rows, 'daily row')} from the last 30 days`);
+      if (cfg.device_token && cfg.first_sync_approved) await doSync(store, cfg, { yes: true });
+      else ui.note('Saved on this machine. It uploads on your next sync.');
+      return;
     }
 
     case 'delete': {

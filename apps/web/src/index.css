@@ -49,6 +49,10 @@
 
 /* shadcn/ui theme, mapped onto the palette (applies in light and dark automatically). */
 :root, .dark {
+  /* Terminal demo: always dark, like a real terminal, with the CLI's own colors (the dark-mode series). */
+  --term-bg: #0e0e0d; --term-bar: #181817; --term-line: #2c2c29;
+  --term-text: #e8e7e2; --term-dim: #8f8e86;
+  --term-blue: #3987e5; --term-orange: #eb6834; --term-green: #1baf7a; --term-yellow: #eda100; --term-red: #e5484d; --term-cyan: #4cc3d4;
   --radius: 0.625rem;
   --background: var(--tb-bg);
   --foreground: var(--tb-text);
