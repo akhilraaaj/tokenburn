@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { CalendarDays, LayoutDashboard, MessagesSquare, Pencil, Share2 } from 'lucide-react';
+import { CalendarDays, Check, LayoutDashboard, Link2, MessagesSquare, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { CONTRIBUTION_DAYS, type PublicProfile } from '../../../../packages/shared/src/index.ts';
 import { GitHubMark, Wordmark } from '@/components/brand';
@@ -33,12 +33,21 @@ function chartStart(since: string, firstDay: string | null) {
   return start < since ? since : start;
 }
 
-async function share(url: string, title: string) {
-  if (navigator.share) {
-    await navigator.share({ url, title }).catch(() => {});
-    return;
-  }
-  await navigator.clipboard.writeText(url).then(() => toast.success('Profile link copied'), () => toast.error('Could not copy the link'));
+/** Copies the profile link; the button confirms with "Link copied" for a moment. */
+function ShareButton({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => navigator.clipboard.writeText(url).then(
+    () => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    },
+    () => toast.error('Could not copy the link'),
+  );
+  return (
+    <Button size="sm" variant="outline" onClick={copy} aria-label="Copy profile link">
+      {copied ? <Check /> : <Link2 />}{copied ? 'Copied' : 'Share'}
+    </Button>
+  );
 }
 
 function ProfileFrame({ handle, children }: { handle: string; children: ReactNode }) {
@@ -62,7 +71,7 @@ export function ProfileHeader({ handle }: { handle: string }) {
         <div className="flex items-center gap-2">
           {user ? (
             <>
-              <Button size="sm" variant="outline" onClick={() => share(url, `@${handle} on tokenburn`)}><Share2 />Share</Button>
+              <ShareButton url={url} />
               {own ? (
                 <Button asChild size="sm"><Link to="/dashboard/settings"><Pencil />Edit profile</Link></Button>
               ) : (

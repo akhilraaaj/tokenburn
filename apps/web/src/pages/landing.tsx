@@ -1,14 +1,13 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  ArrowRight, AtSign, BarChart3, Check, CheckCircle2, ChevronDown, Coins, Flame, Lock, Share2, Terminal,
+  ArrowDown, ArrowRight, AtSign, BarChart3, CalendarDays, Check, CheckCircle2, ChevronDown, CloudUpload, Coins, Flame, Globe, Laptop, Layers, Lock, RefreshCw, Terminal,
 } from 'lucide-react';
 import { GitHubMark, LogoMark } from '@/components/brand';
 import { CopyCommand } from '@/components/copy-command';
 import { Stat, StatGrid } from '@/components/stats';
 import { UsageChart } from '@/components/usage-chart';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -16,8 +15,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CONTRIBUTION_DAYS, contributionDays, type DailyRow, type DayTotal, type PublicProfile, type PublicRow } from '../../../../packages/shared/src/index.ts';
 import { compact } from '@/lib/format.ts';
-import { colorMap, modelDisplayName, providerLabel, rowTokens, type Row } from '@/lib/series.ts';
+import { colorMap, rowTokens, type Row } from '@/lib/series.ts';
 import { cn } from '@/lib/utils';
+import { AreaChart } from '@/components/profile-widgets';
 import { useSession } from '@/session';
 import { ProfileHeader, ProfileView } from './profile';
 
@@ -26,9 +26,9 @@ const INSTALL = 'npm install -g use-tokenburn && tokenburn setup';
 const TOOLS = ['Claude Code', 'Codex CLI', 'Cursor', 'OpenCode', 'Gemini CLI', 'Grok CLI', 'Hermes Agent', 'OpenRouter'];
 
 const STEPS = [
-  { title: 'Install the CLI', body: 'Works on macOS, Linux and Windows with Node 22.18+.' },
-  { title: 'Sign in with GitHub', body: 'Setup previews exactly what will be uploaded and asks first.' },
-  { title: 'Code as usual', body: 'Usage syncs automatically every 30 minutes. Open the dashboard or share your profile.' },
+  { title: 'Install the CLI', body: 'One npm package. Works on macOS, Linux and Windows with Node 22.18+.', command: 'npm install -g use-tokenburn' },
+  { title: 'Run setup', body: 'Sign in with GitHub, see what was found and exactly what will upload, then say yes.', command: 'tokenburn setup' },
+  { title: 'Code as usual', body: 'It syncs every 30 minutes on its own. Check your numbers anytime, or share your profile.', command: 'tokenburn stats' },
 ];
 
 /** Example model mix for the profile preview and the models tile. */
@@ -60,6 +60,7 @@ const DEFAULT_SHOWS: Shows = {
 const FAQ = [
   { q: 'Are my prompts or code uploaded?', a: 'No. The CLI reads usage records on your machine and uploads daily totals per model, request counts and hashed session ids. Prompts, responses, code, file paths, project names and keys stay on your computer.' },
   { q: 'Is my profile public?', a: 'Not until you say so. Your profile is private by default; publish it from Settings or with tokenburn profile public, and pick exactly which fields it shows.' },
+  { q: "What's on a public profile?", a: 'Only what you switch on: your tools, models, token totals, a daily chart, streaks, a contribution graph, session counts and estimated cost. Each one has its own switch, and the preview above uses the same ones.' },
   { q: 'How is cost estimated?', a: "The provider's billed amount where reported (OpenRouter), otherwise the tool's own estimate, otherwise public API list prices. It is not what a subscription costs, and it's always labeled as an estimate." },
   { q: 'Does something keep running in the background?', a: 'No. Your OS runs a quick sync every 30 minutes and nothing stays running in between.' },
   { q: 'Can I delete everything?', a: 'Yes. Deleting your account in Settings removes your profile and all uploaded usage. tokenburn forget clears the local data on each machine.' },
@@ -176,6 +177,33 @@ function exampleProfile(handle: string, f: Shows): PublicProfile {
   return out;
 }
 
+/** Example series for the feature tiles. */
+const FEATURE_TREND = [42, 55, 38, 61, 70, 48, 30, 66, 80, 74, 58, 92, 85, 60, 44, 78, 96, 88, 70, 64, 110, 98, 76, 58, 90, 120, 104, 86, 95, 112]
+  .map((v, i) => ({ label: `Day ${i + 1}`, value: v * 1e6 }));
+const FEATURE_STREAK = [1, 2, 3, 0, 1, 2, 3, 4, 5, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+  .map((v, i) => ({ label: `Day ${i + 1}`, value: v }));
+
+/** A static, illustrative contribution grid for the feature tile. */
+function MiniContributions() {
+  const weeks = 24;
+  const cells = Array.from({ length: weeks * 7 }, (_, i) => {
+    const r = Math.abs(Math.sin(i * 3.917) * 2731.3) % 1;
+    const ramp = 0.35 + 0.65 * (Math.floor(i / 7) / weeks);
+    return Math.min(4, Math.floor(r * 5 * ramp + (i % 7 >= 5 ? -0.6 : 0.4)));
+  });
+  return (
+    <div className="grid grid-flow-col grid-rows-7 gap-[3px]" style={{ gridTemplateColumns: `repeat(${weeks}, minmax(0, 1fr))` }}>
+      {cells.map((l, i) => (
+        <div
+          key={i}
+          className="aspect-square rounded-[2px]"
+          style={{ background: l <= 0 ? 'var(--tb-surface-2)' : `color-mix(in oklab, var(--tb-brand) ${[0, 28, 50, 75, 100][l]}%, var(--tb-surface-1))` }}
+        />
+      ))}
+    </div>
+  );
+}
+
 const cleanHandle = (s: string) => s.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 24);
 
 export function Landing() {
@@ -189,6 +217,7 @@ export function Landing() {
   const [handle, setHandle] = useState('');
   const shown = user?.username ?? (handle || 'you');
   const [shows, setShows] = useState(DEFAULT_SHOWS);
+  const [step, setStep] = useState(0);
   const profile = useMemo(() => exampleProfile(shown, shows), [shown, shows]);
 
   return (
@@ -285,104 +314,140 @@ export function Landing() {
             label="Your profile"
             icon={AtSign}
             title="One link that shows how you build with AI"
-            sub="Your GitHub has your commits. Your tokenburn profile has the rest: the models you lean on, how much you ship with them, and how long the streak has lasted."
+            sub="Your GitHub has your commits. Your tokenburn profile has the rest: the models you lean on, how much you ship with them, and how long the streak has lasted. Flip a switch and watch it change."
           />
-          <div className="grid gap-4">
-            <ProfileControls shows={shows} onChange={(k, v) => setShows({ ...shows, [k]: v })} />
+          <div className="grid items-start gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
+            <div className="grid gap-4">
+              <ProfileControls shows={shows} onChange={(k, v) => setShows({ ...shows, [k]: v })} />
+              <div className="hidden lg:grid"><ProfileCta /></div>
+            </div>
             <ProfilePreview profile={profile} />
           </div>
-          <div className="grid items-center gap-6 rounded-xl border bg-card p-6 md:grid-cols-2 sm:p-8">
-            <div className="grid content-start gap-3">
-              <h3 className="text-xl font-semibold tracking-tight">Looks good wherever you share it</h3>
-              <p className="text-sm text-muted-foreground">
-                Drop your link in Slack, X or iMessage and it unfurls with your tools, top model, tokens and streak. Only what you
-                chose to show.
-              </p>
-              <div className="flex flex-wrap gap-3 pt-1">
-                <ProfileCta />
-              </div>
-            </div>
-            <Unfurl profile={profile} />
-          </div>
+          <div className="grid lg:hidden"><ProfileCta /></div>
         </section>
 
         {/* Features */}
         <section id="features" className="grid scroll-mt-20 grid-cols-1 gap-10">
-          <SectionHeading label="Features" icon={BarChart3} title="Everything you'd want to know, nothing you wouldn't share" sub="Built for developers who live in the terminal." />
+          <SectionHeading
+            label="Features"
+            icon={BarChart3}
+            title="Everything you'd want to know, nothing you wouldn't share"
+            sub="One place for every AI coding tool, built for developers who live in the terminal."
+          />
           <div className="grid gap-4 md:grid-cols-6">
-            <Tile className="md:col-span-4" icon={BarChart3} title="Every model, side by side" body="Input, output and cache tokens per model and per tool, with daily and weekly trends.">
-              <div className="grid gap-3 pt-2">
-                <div className="flex h-3 overflow-hidden rounded-full">
-                  {MIX.map((m) => <div key={m.name} style={{ width: `${m.share}%`, background: m.color }} />)}
-                </div>
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  {MIX.map((m) => (
-                    <span key={m.name} className="inline-flex items-center gap-1.5">
-                      <span className="swatch" style={{ background: m.color }} />{m.name}<span className="num text-subtle">{m.share}%</span>
-                    </span>
+            <Tile className="md:col-span-4" icon={BarChart3} title="Activity at a glance" body="Tokens, requests and cost per day, by model, with your best day called out.">
+              <div className="grid gap-2">
+                <div className="flex gap-1 text-[0.7rem]">
+                  {['Tokens', 'Requests', 'Cost'].map((l, i) => (
+                    <span key={l} className={cn('rounded-md px-2 py-0.5', i === 0 ? 'bg-surface-2 text-foreground' : 'text-subtle')}>{l}</span>
                   ))}
                 </div>
+                <AreaChart height={92} points={FEATURE_TREND} color="var(--series-2)" format={(v) => `${compact(v)} tokens`} xLabels={['30 days ago', 'Today']} />
               </div>
             </Tile>
-            <Tile className="md:col-span-2" icon={Flame} title="Streaks and best days" body="Current and longest streak across every tool, plus your busiest day.">
-              <div className="flex items-end gap-1 pt-2">
-                {[3, 5, 4, 7, 6, 8, 10, 9, 12, 14].map((h, i) => (
-                  <div key={i} className="flex-1 rounded-sm" style={{ height: h * 4, background: i === 9 ? 'var(--series-2)' : 'color-mix(in oklab, var(--series-2) 35%, var(--tb-surface-2))' }} />
+            <Tile className="md:col-span-2" icon={Flame} title="Streaks that count" body="Any tool on any day keeps it alive. Current, longest and every run in between.">
+              <AreaChart height={92} points={FEATURE_STREAK} color="var(--series-4)" format={(v) => (v ? `Day ${v} of a streak` : 'No usage')} xLabels={['30 days ago', 'Today']} />
+            </Tile>
+            <Tile className="md:col-span-3" icon={CalendarDays} title="A year of contributions" body="A GitHub-style grid across every tool, sized to fit any screen.">
+              <MiniContributions />
+            </Tile>
+            <Tile className="md:col-span-3" icon={Layers} title="Every model, side by side" body="Rank by tokens, requests or cost, and open any model for its own trend.">
+              <div className="grid gap-2.5">
+                {MIX.slice(0, 3).map((m) => (
+                  <div key={m.name} className="grid gap-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="inline-flex items-center gap-1.5"><span className="swatch" style={{ background: m.color }} />{m.name}</span>
+                      <span className="num text-subtle">{m.share}%</span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
+                      <div className="h-full rounded-full" style={{ width: `${m.share}%`, background: m.color }} />
+                    </div>
+                  </div>
                 ))}
               </div>
             </Tile>
-            <Tile className="md:col-span-2" icon={Terminal} title="Collected on your machine" body="A small CLI reads your tools' own usage records. Nothing stays running in between syncs." />
+            <Tile className="md:col-span-2" icon={Terminal} title="Collected on your machine" body="A small CLI reads each tool's own usage records. Your code and prompts never leave." />
+            <Tile className="md:col-span-2" icon={RefreshCw} title="Syncs on its own" body="Your OS runs a quick sync every 30 minutes. Nothing stays running in between." />
             <Tile className="md:col-span-2" icon={Coins} title="Honest cost estimates" body="Billed amounts where providers report them, otherwise API list prices, always labeled." />
-            <Tile className="md:col-span-2" icon={Share2} title="Made to be shared" body="Publish /@you with only the fields you choose. Links unfurl with a summary." />
           </div>
         </section>
 
         {/* How it works */}
         <section id="how" className="grid scroll-mt-20 grid-cols-1 gap-10">
-          <SectionHeading label="How it works" icon={Terminal} title="Up and running in a minute" sub="Three steps, then it takes care of itself." />
-          <div className="grid items-center gap-8 lg:grid-cols-2">
-            <ol className="grid gap-3">
-              {STEPS.map((s, i) => (
-                <li key={s.title} className="group flex gap-4 rounded-xl border bg-card p-5 transition-colors hover:border-brand/40">
-                  <span className="num flex size-8 flex-none items-center justify-center rounded-full border bg-surface-2 text-sm font-medium text-muted-foreground transition-colors group-hover:border-brand/40 group-hover:text-brand">
-                    {i + 1}
-                  </span>
-                  <div className="grid gap-1">
-                    <h3 className="font-medium">{s.title}</h3>
-                    <p className="text-sm text-muted-foreground">{s.body}</p>
-                  </div>
+          <SectionHeading label="How it works" icon={Terminal} title="Up and running in a minute" sub="Three steps, then it takes care of itself. Pick a step to see it in the terminal." />
+          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+            <ol className="relative grid gap-2">
+              {/* The rail connecting the step numbers fills in up to the selected step. */}
+              <span aria-hidden className="absolute top-9 bottom-9 left-[2.2rem] w-px bg-border" />
+              <span
+                aria-hidden
+                className="absolute top-9 left-[2.2rem] w-px bg-brand transition-[height] duration-300"
+                style={{ height: `calc((100% - 4.5rem) * ${step / (STEPS.length - 1)})` }}
+              />
+              {STEPS.map((st, i) => (
+                <li key={st.title}>
+                  <button
+                    type="button"
+                    onClick={() => setStep(i)}
+                    aria-pressed={step === i}
+                    className={cn(
+                      'relative flex w-full gap-4 rounded-xl border p-5 text-left transition-colors',
+                      step === i ? 'border-border bg-card shadow-sm' : 'border-transparent hover:bg-card/50',
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'num z-[1] flex size-8 flex-none items-center justify-center rounded-full border text-sm font-medium transition-colors',
+                        step === i ? 'border-brand bg-brand text-primary-foreground'
+                          : i < step ? 'border-brand/50 bg-background text-brand' : 'bg-background text-muted-foreground',
+                      )}
+                    >
+                      {i + 1}
+                    </span>
+                    <span className="grid min-w-0 gap-1.5">
+                      <span className={cn('font-medium', step !== i && 'text-muted-foreground')}>{st.title}</span>
+                      <span className="text-sm text-muted-foreground">{st.body}</span>
+                      <code className={cn('w-fit truncate rounded-md px-2 py-0.5 font-mono text-xs', step === i ? 'bg-brand/10 text-brand' : 'bg-surface-2 text-subtle')}>$ {st.command}</code>
+                    </span>
+                  </button>
                 </li>
               ))}
             </ol>
-            <TerminalDemo handle={shown} />
+            <TerminalDemo handle={shown} step={step} />
           </div>
-          <CopyCommand command={INSTALL} className="mx-auto w-full max-w-md" />
         </section>
 
         {/* Privacy */}
-        <section id="privacy" className="grid scroll-mt-20 gap-8 overflow-hidden rounded-2xl border bg-card p-6 sm:p-10 md:grid-cols-2">
-          <div className="grid content-start gap-3">
-            <SectionLabel icon={Lock}>Privacy</SectionLabel>
-            <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">What leaves your machine</h2>
-            <p className="text-muted-foreground">
-              Daily totals per model, request counts, hashed session ids and Cursor/OpenRouter rows. That's it. Setup shows you the
-              exact upload and asks before the first one.
-            </p>
+        <section id="privacy" className="grid scroll-mt-20 grid-cols-1 gap-10">
+          <SectionHeading
+            label="Privacy"
+            icon={Lock}
+            title="Your code stays on your machine"
+            sub="tokenburn only ever sees totals. Here's where your data goes, step by step."
+          />
+          <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr_auto_1fr] md:items-stretch">
+            <FlowCard
+              icon={Laptop} color="var(--series-other)" step="1 · On your machine" title="Stays local" local
+              body="Read by the CLI, never uploaded."
+              items={['Prompts and responses', 'Source code and file paths', 'Project and machine names', 'API keys and credentials']}
+            />
+            <FlowArrow />
+            <FlowCard
+              icon={CloudUpload} color="var(--series-1)" step="2 · Synced" title="Only totals"
+              body="Numbers, nothing you wrote."
+              items={['Tokens per model, per day', 'Request counts', 'Hashed session ids', 'Cursor and OpenRouter rows']}
+            />
+            <FlowArrow />
+            <FlowCard
+              icon={Globe} color="var(--series-3)" step="3 · On your profile" title="Only what you allow"
+              body="Private until you publish."
+              items={['Each field has its own switch', 'Preview it before going public', 'Turn it off anytime', 'Delete everything in Settings']}
+            />
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">
-            <div className="grid content-start gap-2.5 rounded-xl border bg-surface-2/40 p-4">
-              <p className="text-xs font-medium tracking-wide text-subtle uppercase">Uploaded</p>
-              {['Daily token totals', 'Model and tool names', 'Request counts', 'Hashed session ids'].map((x) => (
-                <span key={x} className="flex items-center gap-2 text-sm"><Check className="size-3.5 text-brand" />{x}</span>
-              ))}
-            </div>
-            <div className="grid content-start gap-2.5 rounded-xl border bg-surface-2/40 p-4">
-              <p className="text-xs font-medium tracking-wide text-subtle uppercase">Never uploaded</p>
-              {['Prompts and responses', 'Source code and file paths', 'Project and machine names', 'API keys and credentials'].map((x) => (
-                <span key={x} className="flex items-center gap-2 text-sm text-muted-foreground"><Lock className="size-3.5 text-subtle" />{x}</span>
-              ))}
-            </div>
-          </div>
+          <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-sm text-muted-foreground">
+            <Lock className="size-3.5 text-subtle" />
+            Setup shows the exact upload and asks before the first one.
+          </p>
         </section>
 
         {/* FAQ */}
@@ -402,15 +467,14 @@ export function Landing() {
         </section>
 
         {/* Final CTA */}
-        <section className="relative grid justify-items-center gap-5 overflow-hidden rounded-2xl border bg-card px-6 py-14 text-center sm:py-20">
-          <LogoMark className="relative size-10" />
-          <h2 className="relative max-w-2xl text-3xl font-semibold tracking-tight text-balance sm:text-5xl">
+        <section className="grid justify-items-center gap-4 rounded-2xl border bg-card px-6 py-14 text-center sm:py-16">
+          <LogoMark className="size-8" />
+          <h2 className="max-w-2xl text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
             Your <span className="text-brand">@{shown}</span> is waiting.
           </h2>
-          <p className="relative max-w-md text-muted-foreground">Start tracking today. It takes a minute, and your code stays yours.</p>
-          <div className="relative flex flex-wrap justify-center gap-3">
+          <p className="max-w-md text-muted-foreground">It takes a minute, and your code stays yours.</p>
+          <div className="flex flex-wrap justify-center gap-3 pt-2">
             <ProfileCta />
-            <Button asChild size="lg" variant="outline"><a href="#how">How it works</a></Button>
           </div>
         </section>
       </div>
@@ -467,16 +531,16 @@ function HandleClaim({ handle, onChange }: { handle: string; onChange: (h: strin
 
 function ProfileControls({ shows, onChange }: { shows: Shows; onChange: (k: ShowKey, v: boolean) => void }) {
   return (
-    <Card className="gap-4">
-      <CardHeader className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1">
-        <CardTitle className="text-base">Choose what your profile shows</CardTitle>
+    <Card className="gap-3">
+      <CardHeader className="gap-1">
+        <CardTitle className="text-sm">What your profile shows</CardTitle>
         <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Lock className="size-3.5 text-subtle" />The same switches as Settings. Private until you publish.
+          <Lock className="size-3 text-subtle" />Same switches as Settings. Private until you publish.
         </p>
       </CardHeader>
-      <CardContent className="grid gap-x-8 sm:grid-cols-2 lg:grid-cols-4">
+      <CardContent className="grid gap-x-6 sm:grid-cols-2 lg:grid-cols-1">
         {SHOW_FIELDS.map(([k, label]) => (
-          <label key={k} htmlFor={k} className="flex cursor-pointer items-center justify-between gap-4 border-t py-2.5 text-sm">
+          <label key={k} htmlFor={k} className="flex cursor-pointer items-center justify-between gap-4 border-t py-2 text-sm">
             {label}
             <Switch id={k} size="sm" checked={shows[k]} onCheckedChange={(v) => onChange(k, v)} />
           </label>
@@ -489,8 +553,8 @@ function ProfileControls({ shows, onChange }: { shows: Shows; onChange: (k: Show
 /** The real profile page (top bar, ProfileView, footnote) inside a browser frame, fed example data. */
 function ProfilePreview({ profile }: { profile: PublicProfile }) {
   return (
-    <div className="overflow-hidden rounded-xl border bg-background shadow-sm">
-      <div className="flex items-center gap-3 border-b bg-card px-4 py-2.5">
+    <div className="flex max-h-[860px] flex-col overflow-hidden rounded-xl border bg-background shadow-sm max-lg:max-h-[680px]">
+      <div className="flex flex-none items-center gap-3 border-b bg-card px-4 py-2.5">
         <div className="flex gap-1.5">
           <span className="size-2.5 rounded-full bg-border" />
           <span className="size-2.5 rounded-full bg-border" />
@@ -502,80 +566,113 @@ function ProfilePreview({ profile }: { profile: PublicProfile }) {
         </div>
         <Badge variant="secondary" className="font-normal">Example data</Badge>
       </div>
-      <ProfileHeader handle={profile.username} />
-      <div className="mx-auto grid w-full max-w-3xl grid-cols-1 gap-6 px-4 pt-2 pb-8 sm:px-6">
-        <ProfileView profile={profile} preview />
-        <p className="text-xs text-subtle">
-          Token counts come from each tool's own records and aren't comparable across tools in every detail.
-          {profile.shows.costs && ' Costs are API list-price estimates unless billed by the provider; not what a subscription costs.'}
-        </p>
+      {/* The page scrolls inside the frame, like a real browser window. */}
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <ProfileHeader handle={profile.username} />
+        <div className="mx-auto grid w-full max-w-3xl grid-cols-1 gap-6 px-4 pt-2 pb-8 sm:px-6">
+          <ProfileView profile={profile} preview />
+          <p className="text-xs text-subtle">
+            Token counts come from each tool's own records and aren't comparable across tools in every detail.
+            {profile.shows.costs && ' Costs are API list-price estimates unless billed by the provider; not what a subscription costs.'}
+          </p>
+        </div>
       </div>
     </div>
   );
 }
 
-/** A chat-style link preview with the same description the server puts in the profile's Open Graph tags. */
-function Unfurl({ profile }: { profile: PublicProfile }) {
-  const handle = profile.username;
-  const providers = [...new Set((profile.breakdown ?? []).map((b) => b.provider).filter(Boolean))] as string[];
-  const top = (profile.breakdown ?? []).filter((b) => b.model_id).sort((a, b) => b.events - a.events)[0];
-  const h = profile.highlights ?? {};
-  const description = [
-    providers.length ? `Uses ${providers.map(providerLabel).join(', ')}` : 'AI coding usage',
-    top?.model_id ? `most-used model: ${modelDisplayName(top.model_id)}` : '',
-    h.totalTokens !== undefined ? `${compact(h.totalTokens)} tokens in 90 days` : '',
-    h.currentStreak ? `${h.currentStreak}-day streak` : '',
-  ].filter(Boolean).join(' · ');
-  return (
-    <div className="grid gap-2 rounded-xl border bg-background p-4">
-      <div className="flex items-center gap-2 text-sm">
-        <Avatar className="size-6 rounded-md"><AvatarFallback className="rounded-md text-[0.6rem]">{handle.slice(0, 2).toUpperCase()}</AvatarFallback></Avatar>
-        <span className="font-medium">{handle}</span>
-        <span className="text-xs text-subtle">just now</span>
-      </div>
-      <p className="text-sm">
-        new streak record 🔥 <span className="text-brand">{window.location.host}/@{handle}</span>
-      </p>
-      <div className="grid gap-0.5 border-l-2 border-brand pl-3">
-        <p className="flex items-center gap-1.5 text-xs text-subtle"><LogoMark className="size-3" />tokenburn</p>
-        <p className="text-sm font-medium text-brand">@{handle} on tokenburn</p>
-        <p className="text-xs text-muted-foreground">{description}</p>
-      </div>
-    </div>
-  );
-}
-
-function TerminalDemo({ handle }: { handle: string }) {
-  const lines: [string, ReactNode][] = [
-    ['cmd', <><span className="text-subtle">$</span> tokenburn setup</>],
-    ['ok', <>Signed in with GitHub as <span className="text-foreground">@{handle}</span></>],
-    ['dim', 'Found on this machine:'],
-    ['dim', '  Claude Code   412 sessions'],
-    ['dim', '  Codex CLI      96 sessions'],
-    ['dim', '  Cursor        usage export'],
-    ['ask', <>Upload daily totals per model? <span className="text-subtle">(prompts & code stay local)</span> <span className="text-foreground">Yes</span></>],
-    ['ok', 'Auto-sync on, every 30 minutes'],
-    ['link', <>{window.location.host}/@{handle}</>],
+function TerminalDemo({ handle, step }: { handle: string; step: number }) {
+  const scripts: [string, ReactNode][][] = [
+    [
+      ['cmd', <><span className="text-subtle">$</span> npm install -g use-tokenburn</>],
+      ['dim', 'added 1 package in 3s'],
+      ['ok', <>Installed. Next: <span className="text-foreground">tokenburn setup</span></>],
+    ],
+    [
+      ['cmd', <><span className="text-subtle">$</span> tokenburn setup</>],
+      ['ok', <>Signed in with GitHub as <span className="text-foreground">@{handle}</span></>],
+      ['dim', 'Found on this machine:'],
+      ['dim', '  Claude Code   412 sessions'],
+      ['dim', '  Codex CLI      96 sessions'],
+      ['dim', '  Cursor        usage export'],
+      ['ask', <>Upload daily totals per model? <span className="text-subtle">(prompts & code stay local)</span> <span className="text-foreground">Yes</span></>],
+      ['ok', 'Auto-sync on, every 30 minutes'],
+    ],
+    [
+      ['cmd', <><span className="text-subtle">$</span> tokenburn stats</>],
+      ['dim', 'Last 30 days'],
+      ['dim', '  Tokens        412M      Est. cost   $186'],
+      ['dim', '  Streak        12 days   Best day    Oct 19'],
+      ['ok', 'Synced 4 minutes ago'],
+      ['link', <>{window.location.host}/@{handle}</>],
+    ],
   ];
   return (
-    <div className="overflow-hidden rounded-xl border bg-card shadow-xl shadow-black/5">
+    <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
       <div className="flex items-center gap-2 border-b bg-surface-2/50 px-4 py-2.5">
         <span className="size-2.5 rounded-full bg-border" />
         <span className="size-2.5 rounded-full bg-border" />
         <span className="size-2.5 rounded-full bg-border" />
         <span className="ml-3 font-mono text-xs text-subtle">~ zsh</span>
+        <span className="ml-auto text-xs text-subtle">Step {step + 1} of {scripts.length}</span>
       </div>
-      <pre className="grid gap-1 overflow-x-auto p-5 font-mono text-[0.8rem] leading-relaxed text-muted-foreground">
-        {lines.map(([kind, text], i) => (
-          <span key={i} className={cn(kind === 'cmd' && 'pb-1 text-foreground')}>
-            {kind === 'ok' && <span className="text-brand">✓ </span>}
-            {kind === 'ask' && <span style={{ color: 'var(--series-2)' }}>? </span>}
-            {kind === 'link' && <span className="text-brand">→ </span>}
+      <pre key={step} className="grid min-h-72 content-start gap-1 overflow-x-auto p-5 font-mono text-[0.8rem] leading-relaxed text-muted-foreground animate-in fade-in duration-300">
+        {scripts[step].map(([kind, text], i) => (
+          <span key={i} className={cn(kind === 'cmd' && 'pb-1 font-medium text-foreground', kind === 'link' && 'text-brand')}>
+            {kind === 'ok' && <span style={{ color: 'var(--series-3)' }}>✓ </span>}
+            {kind === 'ask' && <span style={{ color: 'var(--series-4)' }}>? </span>}
+            {kind === 'link' && '→ '}
             {text}
           </span>
         ))}
         <span className="inline-block h-4 w-2 animate-pulse bg-foreground/70" />
       </pre>
+    </div>
+  );
+}
+
+/** One stage of the data flow in the privacy section, tinted with its stage color. */
+function FlowCard({ icon: Icon, color, step, title, body, items, local = false }: {
+  icon: typeof Lock;
+  color: string;
+  step: string;
+  title: string;
+  body: string;
+  items: string[];
+  local?: boolean;
+}) {
+  return (
+    <div className="grid content-start gap-4 rounded-xl border bg-card p-5">
+      <div className="grid gap-3">
+        <span
+          className="flex size-10 items-center justify-center rounded-xl"
+          style={{ background: `color-mix(in oklab, ${color} 16%, transparent)`, color }}
+        >
+          <Icon className="size-5" />
+        </span>
+        <div className="grid gap-0.5">
+          <span className="text-xs text-subtle">{step}</span>
+          <span className="text-lg font-semibold tracking-tight">{title}</span>
+          <span className="text-sm text-muted-foreground">{body}</span>
+        </div>
+      </div>
+      <ul className="grid gap-2 border-t pt-4 text-sm">
+        {items.map((x) => (
+          <li key={x} className={cn('flex items-center gap-2', local && 'text-muted-foreground')}>
+            {local ? <Lock className="size-3.5 flex-none text-subtle" /> : <Check className="size-3.5 flex-none" style={{ color }} />}
+            {x}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function FlowArrow() {
+  return (
+    <div aria-hidden className="flex items-center justify-center text-subtle">
+      <ArrowRight className="hidden size-4 md:block" />
+      <ArrowDown className="size-4 md:hidden" />
     </div>
   );
 }

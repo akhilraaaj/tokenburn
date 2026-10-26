@@ -3,7 +3,7 @@ import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate, useSearchPar
 import { Boxes, ChevronsUpDown, ExternalLink, LayoutDashboard, Laptop, LogOut, Settings } from 'lucide-react';
 import type { DashboardData } from '../../../../packages/shared/src/index.ts';
 import { LogoMark } from '@/components/brand';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -146,7 +146,11 @@ export function AppLayout() {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <SidebarMenuButton size="lg" className="data-[state=open]:bg-sidebar-accent">
-                      <Avatar className="size-8 rounded-lg"><AvatarFallback className="rounded-lg text-xs">{initials}</AvatarFallback></Avatar>
+                      <Avatar className="size-8 rounded-lg">
+                        {/* The public avatar; it only exists while the profile is public and shows GitHub, else initials. */}
+                        {user.username && <AvatarImage src={`/api/avatar/${user.username}`} alt="" className="rounded-lg" />}
+                        <AvatarFallback className="rounded-lg text-xs">{initials}</AvatarFallback>
+                      </Avatar>
                       <div className="grid flex-1 text-left text-sm leading-tight">
                         <span className="truncate font-medium">{user.username ? `@${user.username}` : user.github_login}</span>
                         <span className="truncate text-xs text-subtle">GitHub · {user.github_login}</span>
