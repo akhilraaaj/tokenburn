@@ -92,21 +92,21 @@ assert.match(cli('login', '--dev', user, '--name', 'E2E Mac'), new RegExp(`Signe
 step('CLI sign-in with the same identity joins the same account');
 
 const scan = cli('scan');
-assert.match(scan, /Claude Code: 1 file|Claude Code: \d+ file/);
-assert.match(scan, /Codex CLI: 1 file/);
+assert.match(scan, /Claude Code\s+\d+ files?/);
+assert.match(scan, /Codex CLI\s+1 file/);
 assert.match(scan, /nothing uploaded/);
-assert.match(cli('status'), /On the server:\n {2}nothing yet/);
+assert.match(cli('status'), /On the server\n {2}nothing yet/);
 step('scan collects Claude Code + Codex locally, uploads nothing');
 
-assert.match(cli('sync', '--yes'), /Synced: \d+ daily totals updated/);
-assert.match(cli('sync', '--yes'), /Synced: 0 daily totals updated, 0 removed, 0 sessions/);
+assert.match(cli('sync', '--yes'), /Synced \d+ daily totals/);
+assert.match(cli('sync', '--yes'), /Up to date\. Nothing new since the last sync/);
 step('first sync (approved with --yes) + idempotent re-sync');
 
-assert.match(cli('import-cursor', path.join(root, 'fixtures/cursor/usage-events.sample.csv'), '--yes'), /5 account rows new/);
+assert.match(cli('import-cursor', path.join(root, 'fixtures/cursor/usage-events.sample.csv'), '--yes'), /Synced 5 account rows/);
 const st = cli('status');
-assert.match(st, /Claude Code local transcripts: 5 requests/);
-assert.match(st, /Codex CLI local session files: 1 requests/);
-assert.match(st, /Cursor usage CSV export: 5 requests/);
+assert.match(st, /Claude Code local transcripts\s+5 requests/);
+assert.match(st, /Codex CLI local session files\s+1 request\b/);
+assert.match(st, /Cursor usage CSV export\s+5 requests/);
 step('Cursor import uploads immediately; server summary matches fixtures');
 
 const stats = cli('stats', '--days', '365');
@@ -236,7 +236,7 @@ step('OpenRouter revisions upsert; out-of-range dates rejected');
 
 cli('delete', '--provider', 'cursor', '--yes');
 assert.doesNotMatch(cli('status'), /Cursor usage CSV export/);
-const devId = cli('devices').match(/\* ([0-9a-f-]{36})/)[1];
+const devId = cli('devices').match(/\*.*?([0-9a-f-]{36})/)[1];
 cli('devices', 'remove', devId);
 assert.throws(() => cli('sync', '--yes'), /Unknown or revoked device/);
 step('provider deletion and device revocation');

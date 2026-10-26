@@ -7,7 +7,7 @@ import os from 'node:os';
 import readline from 'node:readline/promises';
 import { Writable } from 'node:stream';
 import { BILLING_MODES, PROVIDERS, PROVIDER_LABELS, SOURCES, parseCursorCsv, type BillingMode, type Provider, type UsageRecord } from '../../shared/src/index.ts';
-import { loadConfig, saveConfig, type Config } from './config.ts';
+import { DEFAULT_API_URL, loadConfig, saveConfig, type Config } from './config.ts';
 import { stateDir } from './paths.ts';
 import { INTERVAL_MIN, installService, logPath, runningFromNpxCache, serviceStatus, uninstallService } from './service.ts';
 import { LOCAL_SOURCES, type SourceContext } from './sources/index.ts';
@@ -17,50 +17,106 @@ import { withLock } from './lock.ts';
 import { loadPrices } from './prices.ts';
 import { compact, renderStats } from './stats.ts';
 import { Store } from './store.ts';
-import { api, COLLECTOR_VERSION, planSync, runSync } from './sync.ts';
+import { api, ApiError, COLLECTOR_VERSION, NetworkError, planSync, runSync } from './sync.ts';
+import * as ui from './ui.ts';
 
-const HELP = `tokenburn ${COLLECTOR_VERSION} — your AI coding usage, collected locally, published as /@username
+const { c, sym } = ui;
 
-Getting started
-  tokenburn setup                 Sign in with GitHub, preview, first sync, background service
+// ---------- help ----------
 
-Everyday
-  tokenburn stats [--days 30]     Totals, est. cost, best day, streaks (this machine's data)
-  tokenburn dashboard             Open your web dashboard (all machines)
-  tokenburn status                Sources found, sync health, background service
-  tokenburn sync                  Upload now (automatic sync does this every ${INTERVAL_MIN} min)
+type HelpRow = [string, string];
+const HELP_SECTIONS: [string, HelpRow[]][] = [
+  ['Everyday', [
+    ['stats [--days 30]', 'Your usage on this machine: tokens, cost, streaks'],
+    ['status', 'Check that everything works: tools, server, auto sync'],
+    ['sync', `Upload now (auto sync does this every ${INTERVAL_MIN} min)`],
+    ['dashboard', 'Open your web dashboard (all your machines)'],
+  ]],
+  ['Public profile  ' + c.dim('(private until you publish it)'), [
+    ['profile', 'See your profile link and what it shows'],
+    ['profile public | private', 'Publish or hide your profile'],
+    ['profile show <fields>', 'Show fields, e.g. tokens,models,streaks (or all)'],
+    ['profile hide <fields>', 'Hide fields again'],
+    ['profile username <name>', 'Change your /@username'],
+    ['profile name "<name>"', 'Set the display name'],
+  ]],
+  ['Cursor & other sources', [
+    ['cursor auto-import on | off', 'Import Cursor CSVs from your Downloads folder'],
+    ['import-cursor <file.csv>', 'Import one Cursor CSV right now'],
+    ['scan', 'Preview what would be uploaded (uploads nothing)'],
+    ['connect openrouter', 'Add OpenRouter usage (needs a management key)'],
+    ['disconnect openrouter', 'Remove the saved OpenRouter key'],
+    ['config set billing-mode <tool> <mode>', 'subscription, api, unknown or auto'],
+    ['config add-dir <tool> <dir>', 'Read a tool\'s logs from an extra folder'],
+  ]],
+  ['Account & data', [
+    ['login [--api <url>]', 'Sign in with GitHub (or switch server)'],
+    ['logout', 'Sign this machine out and stop auto sync'],
+    ['devices [remove <id>]', 'Machines connected to your account'],
+    ['service install | uninstall | status | logs', 'Turn auto sync on or off, read its log'],
+    ['watch', 'Sync live while this terminal stays open'],
+    ['delete [--provider <tool>]', 'Delete uploaded usage from the server'],
+    ['delete --account', 'Delete your account and everything on the server'],
+    ['forget', 'Erase everything tokenburn stored on this machine'],
+  ]],
+];
 
-Public profile (private until you say so)
-  tokenburn profile               Show settings and your profile URL
-  tokenburn profile public|private
-  tokenburn profile show <fields> Fields: providers, models, tokens, trend, sessions, streaks, costs, github (comma-separated)
-  tokenburn profile hide <fields>
-  tokenburn profile username <name>
-  tokenburn profile name "<display name>"
+function printHelp() {
+  const all = HELP_SECTIONS.flatMap(([, r]) => r);
+  const w = Math.min(Math.max(...all.map(([k]) => k.length)), 30) + 'tokenburn '.length;
+  const row = ([k, v]: HelpRow) => {
+    const name = `${c.dim('tokenburn')} ${ui.cmd(k)}`;
+    const len = ui.visibleLength(name);
+    return len > w ? `  ${name}\n  ${' '.repeat(w)}  ${c.dim(v)}` : `  ${ui.padEnd(name, w)}  ${c.dim(v)}`;
+  };
+  ui.log();
+  ui.log(`${ui.logo()} ${c.dim(COLLECTOR_VERSION)}`);
+  ui.log(c.dim('Your AI coding usage across tools. Collected on this machine, shared only if you choose.'));
+  ui.log();
+  ui.log(`${c.bold('New here?')} One command does everything:`);
+  ui.log(row(['setup', 'Sign in, find your tools, first upload, auto sync']));
+  for (const [title, rows] of HELP_SECTIONS) {
+    ui.heading(title);
+    rows.forEach((r) => ui.log(row(r)));
+  }
+  ui.log();
+  ui.log(c.dim(`Tools: Claude Code, Codex CLI, Cursor, OpenCode, Gemini CLI, Grok CLI, Hermes, OpenRouter`));
+  ui.log(c.dim(`Local data: ${stateDir()}  ·  Never uploaded: prompts, code, file paths, project names`));
+  ui.log();
+}
 
-Sources
-  tokenburn scan                  Collect locally and preview; uploads nothing
-  tokenburn import-cursor FILE    Import a Cursor usage CSV export
-  tokenburn cursor auto-import on|off [--dir DIR]   Watch Downloads for new Cursor exports
-  tokenburn connect openrouter    Save an OpenRouter management key locally
-  tokenburn disconnect openrouter
-  tokenburn config set billing-mode <provider> <subscription|api|unknown|auto>
-  tokenburn config add-dir <provider> <dir>
+const COMMANDS = [
+  'setup', 'status', 'stats', 'sync', 'dashboard', 'profile', 'cursor', 'import-cursor', 'scan', 'connect', 'disconnect',
+  'config', 'login', 'logout', 'devices', 'service', 'watch', 'delete', 'forget', 'help', 'version',
+];
 
-Account & data
-  tokenburn login | logout
-  tokenburn devices [remove <id>]        Machines connected to your account
-  tokenburn delete [--provider <name>] [--yes]   Delete uploaded usage (all providers by default)
-  tokenburn delete --account             Delete your account and everything on the server
-  tokenburn forget                       Delete all local state on this machine
-  tokenburn service install|uninstall|status|logs   Automatic sync every ${INTERVAL_MIN} min (launchd/systemd)
-  tokenburn watch                         Real-time sync while this terminal is open (optional)
+/** Closest known command for a typo (≤ 2 edits; ties go to the more common command, listed first). */
+function suggest(input: string): string | null {
+  const dist = (a: string, b: string) => {
+    const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+    for (let j = 1; j <= b.length; j++) d[0][j] = j;
+    for (let i = 1; i <= a.length; i++) {
+      for (let j = 1; j <= b.length; j++) {
+        d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+        // Swapped neighbours ("stauts") count as one typo.
+        if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+      }
+    }
+    return d[a.length][b.length];
+  };
+  const best = COMMANDS.map((x) => [x, dist(input, x)] as const).sort((a, b) => a[1] - b[1])[0];
+  return best && best[1] <= 2 ? best[0] : null;
+}
 
-Local state: ${stateDir()} (override with TOKENBURN_HOME)`;
+// ---------- small helpers ----------
 
 const PROFILE_FIELDS: Record<string, string> = {
   providers: 'show_providers', models: 'show_models', tokens: 'show_token_totals', trend: 'show_daily_trend', sessions: 'show_sessions',
   streaks: 'show_streaks', costs: 'show_costs', github: 'show_github',
+};
+const FIELD_LABELS: Record<string, string> = {
+  providers: 'Which tools you use', models: 'Which models you use', tokens: 'Token totals', trend: 'Daily activity chart',
+  sessions: 'Session counts', streaks: 'Streaks and best day', costs: 'Estimated cost', github: 'GitHub avatar and link',
 };
 
 function flag(args: string[], name: string): string | undefined {
@@ -69,23 +125,40 @@ function flag(args: string[], name: string): string | undefined {
 }
 
 const ctxOf = (cfg: Config): SourceContext => ({ extraDirs: cfg.extra_dirs, billingOverrides: cfg.billing_overrides });
+const home = (p: string) => (p.startsWith(os.homedir()) ? `~${p.slice(os.homedir().length)}` : p);
+const isLocalServer = (url: string) => /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/.test(url);
+const plural = (n: number, w: string) => `${n.toLocaleString('en-US')} ${w}${n === 1 ? '' : 's'}`;
+
+function ago(iso: string | null | undefined): string {
+  if (!iso) return 'never';
+  const s = Math.round((Date.now() - Date.parse(iso)) / 1000);
+  if (!Number.isFinite(s)) return iso;
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  return `${Math.round(s / 86400)} days ago`;
+}
 
 async function ask(q: string): Promise<string> {
   if (!process.stdin.isTTY) return '';
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const a = await rl.question(q);
+  const a = await rl.question(`${c.blue('?')} ${c.bold(q)} `);
   rl.close();
   return a.trim();
 }
 
-const confirm = async (q: string) => /^y(es)?$/i.test(await ask(`${q} [y/N] `));
+/** Yes/no question. Enter picks the default (shown in capitals); non-interactive runs get the default too. */
+async function confirm(q: string, defaultYes = false): Promise<boolean> {
+  const a = await ask(`${q} ${c.dim(defaultYes ? '(Y/n)' : '(y/N)')}`);
+  return a ? /^y(es)?$/i.test(a) : defaultYes && !!process.stdin.isTTY;
+}
 
 async function askSecret(q: string): Promise<string> {
   if (!process.stdin.isTTY) return '';
   let muted = false;
   const out = new Writable({ write(chunk, _enc, cb) { if (!muted) process.stdout.write(chunk); cb(); } });
   const rl = readline.createInterface({ input: process.stdin, output: out, terminal: true });
-  const p = rl.question(q);
+  const p = rl.question(`${c.blue('?')} ${c.bold(q)} `);
   muted = true;
   const a = await p;
   rl.close();
@@ -94,34 +167,49 @@ async function askSecret(q: string): Promise<string> {
 }
 
 function openBrowser(url: string) {
-  const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open';
-  execFile(cmd, [url], () => {});
+  const command = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open';
+  execFile(command, [url], () => {});
+}
+
+function requireSignIn(cfg: Config) {
+  if (!cfg.device_token) throw new Error('Not signed in. Run `tokenburn login` (or `tokenburn setup`).');
+}
+
+/** Warns when this machine syncs somewhere other than the public site, e.g. a local test server. */
+function serverNotice(cfg: Config) {
+  if (!isLocalServer(cfg.api_url)) return;
+  ui.warn(`This machine syncs to a ${c.bold('local test server')} (${cfg.api_url}), not ${new URL(DEFAULT_API_URL).host}.`);
+  ui.hint('Switch to the real site:', `tokenburn login --api ${DEFAULT_API_URL}`);
 }
 
 // ---------- collection ----------
 
-interface CollectResult {
-  lines: string[];
-  changed: number;
-}
+interface Found { label: string; detail: string; problem?: boolean }
+interface CollectResult { found: Found[]; changed: number }
 
 async function collectAll(store: Store, cfg: Config, opts: { network: boolean }): Promise<CollectResult> {
   const ctx = ctxOf(cfg);
-  const lines: string[] = [];
+  const found: Found[] = [];
   let changed = 0;
   for (const src of LOCAL_SOURCES) {
     const s = src.scan(store, ctx);
     changed += s.changedEvents;
     if (s.roots.length) {
-      lines.push(`  ${src.label}: ${s.files} file(s), ${s.changedEvents} new/updated requests` +
-        (s.malformedLines ? `, ${s.malformedLines} malformed lines skipped` : '') + ` · billing: ${src.billing(ctx).mode}`);
+      found.push({
+        label: src.label,
+        detail: `${plural(s.files, 'file')} · ${s.changedEvents ? `${plural(s.changedEvents, 'new request')}` : 'up to date'}` +
+          (s.malformedLines ? ` · ${plural(s.malformedLines, 'unreadable line')} skipped` : ''),
+      });
     }
   }
   if (cfg.cursor_auto_import) {
     const res = await autoImportCursorExports(store, cfg.downloads_dir ?? defaultDownloadsDir());
     for (const r of res) {
       changed += r.inserted;
-      lines.push(r.error ? `  Cursor export ${r.file}: rejected (${r.error})` : `  Cursor export ${r.file}: ${r.inserted} new, ${r.duplicates} already imported`);
+      const file = home(r.file);
+      found.push(r.error
+        ? { label: 'Cursor CSV', detail: `${file}: not imported (${r.error})`, problem: true }
+        : { label: 'Cursor CSV', detail: `${file}: ${plural(r.inserted, 'new row')}${r.duplicates ? `, ${r.duplicates} already imported` : ''}` });
     }
   }
   if (opts.network && cfg.openrouter_key) {
@@ -130,14 +218,19 @@ async function collectAll(store: Store, cfg: Config, opts: { network: boolean })
       try {
         const r = await collectOpenRouter(store, cfg.openrouter_key);
         changed += r.changed;
-        lines.push(`  OpenRouter: ${r.rows} daily rows, ${r.changed} new/updated`);
+        found.push({ label: 'OpenRouter', detail: `${plural(r.rows, 'daily row')} · ${r.changed} new or updated` });
       } catch (e) {
-        lines.push(`  OpenRouter: ${(e as Error).message}`);
+        found.push({ label: 'OpenRouter', detail: (e as Error).message, problem: true });
         store.setMeta('openrouter_last_error', (e as Error).message);
       }
     }
   }
-  return { lines, changed };
+  return { found, changed };
+}
+
+function printFound(found: Found[]) {
+  const w = Math.max(0, ...found.map((f) => f.label.length));
+  for (const f of found) ui.log(`  ${f.problem ? sym.warn : sym.ok} ${ui.padEnd(f.label, w)}  ${c.dim(f.detail)}`);
 }
 
 function health(store: Store, cfg: Config) {
@@ -158,11 +251,12 @@ function health(store: Store, cfg: Config) {
   return { sources, platform: os.platform() };
 }
 
-function previewTable(records: UsageRecord[]) {
-  const groups = new Map<string, { provider: string; model: string; requests: number; input: number | null; output: number | null; first: string; last: string }>();
+/** What's been collected, one row per tool + model. */
+function previewTable(records: UsageRecord[], max = 12) {
+  const groups = new Map<string, { tool: string; model: string; requests: number; input: number | null; output: number | null; first: string; last: string }>();
   for (const r of records) {
     const k = `${r.provider}\u0001${r.model_id}`;
-    const g = groups.get(k) ?? { provider: PROVIDER_LABELS[r.provider], model: r.model_id, requests: 0, input: null, output: null, first: r.occurred_at, last: r.occurred_at };
+    const g = groups.get(k) ?? { tool: PROVIDER_LABELS[r.provider], model: r.model_id, requests: 0, input: null, output: null, first: r.occurred_at, last: r.occurred_at };
     g.requests += r.event_count;
     if (r.input_tokens !== null) g.input = (g.input ?? 0) + r.input_tokens;
     if (r.output_tokens !== null) g.output = (g.output ?? 0) + r.output_tokens;
@@ -170,67 +264,120 @@ function previewTable(records: UsageRecord[]) {
     if (r.occurred_at > g.last) g.last = r.occurred_at;
     groups.set(k, g);
   }
-  if (!groups.size) return console.log('  (no usage found)');
-  console.table([...groups.values()].map((g) => ({
-    tool: g.provider, model: g.model, requests: g.requests, input: compact(g.input), output: compact(g.output),
-    from: g.first.slice(0, 10), to: g.last.slice(0, 10),
-  })));
+  if (!groups.size) return ui.note('No usage found yet.');
+  const list = [...groups.values()].sort((a, b) => b.requests - a.requests);
+  const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+  const head = ['Tool', 'Model', 'Requests', 'Input', 'Output', 'Dates'];
+  const body = list.slice(0, max).map((g) => [
+    g.tool, cut(g.model, 28), g.requests.toLocaleString('en-US'), compact(g.input), compact(g.output),
+    g.first.slice(0, 10) === g.last.slice(0, 10) ? g.first.slice(0, 10) : `${g.first.slice(0, 10)} → ${g.last.slice(0, 10)}`,
+  ]);
+  const widths = head.map((h, i) => Math.max(h.length, ...body.map((r) => r[i].length)));
+  const right = [false, false, true, true, true, false];
+  const fmtRow = (r: string[]) => r.map((v, i) => (right[i] ? v.padStart(widths[i]) : i === r.length - 1 ? v : v.padEnd(widths[i]))).join('   ');
+  ui.log(`  ${c.dim(fmtRow(head))}`);
+  body.forEach((r) => ui.log(`  ${fmtRow(r)}`));
+  if (list.length > max) ui.note(`+ ${plural(list.length - max, 'more model')}`);
+}
+
+function privacyBox() {
+  ui.box([
+    `${sym.ok} Uploaded   daily token totals per model, request counts,`,
+    `             hashed session ids, Cursor and OpenRouter usage rows`,
+    `${sym.fail} Never      prompts, responses, code, file paths,`,
+    `             project names, API keys`,
+  ], { title: c.bold('What gets uploaded') });
+}
+
+function syncSummary(r: { buckets: number; deletedBuckets: number; sessions: number; accountInserted: number; accountDuplicates: number }) {
+  if (!r.buckets && !r.deletedBuckets && !r.sessions && !r.accountInserted) {
+    return `Up to date. Nothing new since the last sync${r.accountDuplicates ? ` (${r.accountDuplicates} rows already on the server)` : ''}.`;
+  }
+  const parts = [
+    r.buckets && plural(r.buckets, 'daily total'),
+    r.deletedBuckets && `${r.deletedBuckets} removed`,
+    r.sessions && plural(r.sessions, 'session'),
+    r.accountInserted && plural(r.accountInserted, 'account row'),
+  ].filter(Boolean);
+  return `Synced ${parts.join(' · ')}${r.accountDuplicates ? c.dim(` (${r.accountDuplicates} rows already on the server)`) : ''}`;
 }
 
 async function doSync(store: Store, cfg: Config, opts: { yes: boolean; quiet?: boolean }) {
-  if (!cfg.device_token) throw new Error('Not signed in. Run `tokenburn login` (or `tokenburn setup`).');
-  await collectAll(store, cfg, { network: true });
+  requireSignIn(cfg);
+  await ui.withSpinner('Collecting usage on this machine…', () => collectAll(store, cfg, { network: true }));
   if (!cfg.first_sync_approved) {
-    console.log('\nFirst sync. This is what gets summarized and uploaded:');
+    ui.log();
+    ui.log(`${c.bold('Your first upload.')} Here's what tokenburn found on this machine:`);
+    ui.log();
     previewTable(store.events());
-    console.log('Uploaded: daily token totals per model, hashed session ids with first/last times, Cursor/OpenRouter rows.');
-    console.log('Never uploaded: prompts, responses, code, file paths, project names, API keys.');
-    if (!opts.yes && !(await confirm('Approve this upload?'))) {
-      console.log('Nothing uploaded.');
+    ui.log();
+    privacyBox();
+    if (!opts.yes && !(await confirm('Upload this to your account?'))) {
+      ui.info('Nothing uploaded. Run `tokenburn sync` whenever you\'re ready.');
       return false;
     }
     cfg.first_sync_approved = true;
     saveConfig(cfg);
   }
-  const r = await withLock(async () => runSync(store, cfg, health(store, cfg), await loadPrices(), { force: true }), () => {
-    throw new Error('Another tokenburn sync is running right now. Try again in a moment.');
-  });
-  if (!opts.quiet) {
-    console.log(`Synced: ${r.buckets} daily totals updated, ${r.deletedBuckets} removed, ${r.sessions} sessions, ` +
-      `${r.accountInserted} account rows new / ${r.accountDuplicates} already on server.`);
+  const spin = ui.spinner(`Uploading to ${new URL(cfg.api_url).host}…`);
+  try {
+    const r = await withLock(async () => runSync(store, cfg, health(store, cfg), await loadPrices(), { force: true }), () => {
+      throw new Error('Another tokenburn sync is running right now. Try again in a moment.');
+    });
+    if (opts.quiet) spin.stop();
+    else spin.succeed(syncSummary(r));
+  } catch (e) {
+    spin.stop();
+    throw e;
   }
   return true;
 }
 
 // ---------- login ----------
 
-async function login(store: Store, cfg: Config, args: string[]) {
+async function login(store: Store, cfg: Config, args: string[], opts: { inSetup?: boolean } = {}) {
   cfg.api_url = flag(args, '--api') ?? cfg.api_url;
-  const name = flag(args, '--name') ?? `${os.platform() === 'darwin' ? 'Mac' : os.platform()} (${os.userInfo().username === 'root' ? 'root' : 'collector'})`;
+  const name = flag(args, '--name') ?? (os.hostname().replace(/\.(local|lan|home)$/i, '') || `${os.platform()} machine`);
   const dev = flag(args, '--dev');
   const anon = { ...cfg, device_token: null };
   // Same machine signing in again: send the old token so the server resumes this device instead of
   // creating a second one (which would upload this machine's history twice).
   const previous_token = cfg.device_token ?? cfg.previous_token ?? undefined;
-  let res = await api(anon, 'POST', '/api/login/start', { name, previous_token, ...(dev ? { dev_user: dev } : {}) });
+  let res = await ui.withSpinner(`Connecting to ${new URL(cfg.api_url).host}…`,
+    () => api(anon, 'POST', '/api/login/start', { name, previous_token, ...(dev ? { dev_user: dev } : {}) }));
   if (res.status !== 'approved') {
-    console.log(`\nSign in with GitHub: open ${res.verification_uri} and enter the code\n\n    ${res.user_code}\n`);
-    if (typeof res.verification_uri === 'string' && res.verification_uri.startsWith('https://github.com/')) openBrowser(res.verification_uri);
+    const url = String(res.verification_uri);
+    ui.log();
+    ui.box([
+      `${c.dim('1.')} Open      ${ui.link(url)}`,
+      `${c.dim('2.')} Enter     ${c.bold(c.orange(String(res.user_code)))}`,
+      `${c.dim('3.')} Approve   ${c.dim('tokenburn on GitHub')}`,
+    ], { title: c.bold('Sign in with GitHub') });
+    if (url.startsWith('https://github.com/')) {
+      openBrowser(url);
+      ui.note('Opened in your browser. Use the same GitHub account as on the website.');
+    }
+    ui.log();
     const deadline = Date.now() + (res.expires_in ?? 900) * 1000;
     let interval = res.interval ?? 5;
     const loginId = res.login_id;
-    for (;;) {
-      if (Date.now() > deadline) throw new Error('Code expired. Run `tokenburn login` again.');
-      await new Promise((r) => setTimeout(r, interval * 1000));
-      try {
-        res = await api(anon, 'POST', '/api/login/poll', { login_id: loginId });
-      } catch (e) {
-        if (/→ 403/.test(String(e))) throw new Error('Sign-in was denied on GitHub.');
-        if (/→ 410/.test(String(e))) throw new Error('Code expired. Run `tokenburn login` again.');
-        throw e;
+    const spin = ui.spinner(`Waiting for you to approve on GitHub… ${c.dim('(Ctrl+C to cancel)')}`);
+    try {
+      for (;;) {
+        if (Date.now() > deadline) throw new Error('The code expired before it was approved. Run `tokenburn login` to get a new one.');
+        await new Promise((r) => setTimeout(r, interval * 1000));
+        try {
+          res = await api(anon, 'POST', '/api/login/poll', { login_id: loginId });
+        } catch (e) {
+          if (e instanceof ApiError && e.status === 403) throw new Error('Sign-in was cancelled on GitHub. Run `tokenburn login` to try again.');
+          if (e instanceof ApiError && e.status === 410) throw new Error('The code expired before it was approved. Run `tokenburn login` to get a new one.');
+          throw e;
+        }
+        if (res.status === 'approved') break;
+        interval = res.interval ?? interval;
       }
-      if (res.status === 'approved') break;
-      interval = res.interval ?? interval;
+    } finally {
+      spin.stop();
     }
   }
   const sameDevice = res.resumed && cfg.device_id === res.device_id;
@@ -238,98 +385,199 @@ async function login(store: Store, cfg: Config, args: string[]) {
   Object.assign(cfg, { device_token: res.token, device_id: res.device_id, previous_token: null, first_sync_approved: sameDevice ? cfg.first_sync_approved : false });
   saveConfig(cfg);
   const me = await api(cfg, 'GET', '/api/me');
-  console.log(`Signed in as ${me.user.github_login}${res.new_account ? ' (new account)' : ''}.` +
-    (me.user.username ? ` Your profile URL will be ${new URL(`/@${me.user.username}`, cfg.api_url)}` : ' Pick a username: tokenburn profile username <name>'));
+  ui.ok(`Signed in as ${c.bold(me.user.github_login)}${res.new_account ? c.dim(' · new account created') : ''}`);
+  if (cfg.api_url !== DEFAULT_API_URL) ui.note(`Server: ${cfg.api_url}`);
+  serverNotice(cfg);
+  if (opts.inSetup) return;
+  ui.log();
+  if (!cfg.first_sync_approved) ui.hint('Next, review and upload your usage:', 'tokenburn sync');
+  if (!me.user.username) ui.hint('Pick a username for your profile:', 'tokenburn profile username <name>');
 }
 
 // ---------- commands ----------
 
 async function profileCmd(cfg: Config, args: string[]) {
-  if (!cfg.device_token) throw new Error('Not signed in. Run `tokenburn login`.');
+  requireSignIn(cfg);
   const [sub, ...rest] = args;
   const value = rest.join(' ').trim();
+  let done = '';
   if (sub === 'username') {
+    if (!value) throw new Error('Usage: tokenburn profile username <name>');
     const r = await api(cfg, 'PUT', '/api/me/username', { username: value });
-    console.log(`Username set: ${new URL(`/@${r.username}`, cfg.api_url)}`);
+    done = `Username set to @${r.username}`;
   } else if (sub === 'name') {
     await api(cfg, 'PATCH', '/api/me/profile', { display_name: value || null });
+    done = value ? `Display name set to "${value}"` : 'Display name removed';
   } else if (sub === 'public' || sub === 'private') {
     await api(cfg, 'PATCH', '/api/me/profile', { is_public: sub === 'public' });
+    done = sub === 'public' ? 'Your profile is now public' : 'Your profile is now private';
   } else if (sub === 'show' || sub === 'hide') {
     const fields = value.split(/[,\s]+/).filter(Boolean);
     const unknown = fields.filter((f) => !PROFILE_FIELDS[f] && f !== 'all');
-    if (!fields.length || unknown.length) throw new Error(`Fields: ${Object.keys(PROFILE_FIELDS).join(', ')}, all`);
+    if (!fields.length || unknown.length) {
+      throw new Error(`${unknown.length ? `Unknown field "${unknown[0]}". ` : ''}Fields: ${Object.keys(PROFILE_FIELDS).join(', ')}, or all.\n  Example: tokenburn profile ${sub} tokens,models,streaks`);
+    }
     const keys = fields.includes('all') ? Object.values(PROFILE_FIELDS) : fields.map((f) => PROFILE_FIELDS[f]);
     await api(cfg, 'PATCH', '/api/me/profile', Object.fromEntries(keys.map((k) => [k, sub === 'show'])));
+    done = `${sub === 'show' ? 'Now showing' : 'Now hiding'}: ${fields.includes('all') ? 'everything' : fields.join(', ')}`;
   } else if (sub) {
-    throw new Error('Unknown profile command. See `tokenburn help`.');
+    throw new Error(`Unknown profile command "${sub}". Run \`tokenburn help\` to see them all.`);
   }
   const me = await api(cfg, 'GET', '/api/me');
   const p = me.profile;
-  const url = me.user.username ? new URL(`/@${me.user.username}`, cfg.api_url).toString() : '(no username yet)';
-  console.log(`Profile: ${url}  ${p.is_public ? '[PUBLIC]' : '[private]'}`);
-  if (p.display_name) console.log(`Display name: ${p.display_name}`);
-  console.log('Shown publicly:');
-  for (const [field, key] of Object.entries(PROFILE_FIELDS)) console.log(`  ${p[key] ? '✓' : '·'} ${field}`);
-  if (!p.is_public) console.log('Nothing is visible until you run `tokenburn profile public`.');
+  if (done) ui.ok(done);
+  ui.log();
+  const url = me.user.username ? new URL(`/@${me.user.username}`, cfg.api_url).toString() : null;
+  ui.rows([
+    ['Profile', url ? ui.link(url) : c.dim('no username yet')],
+    ['Visibility', p.is_public ? c.green('● Public') : c.gray('○ Private')],
+    ...(p.display_name ? [['Display name', p.display_name] as [string, string]] : []),
+  ]);
+  ui.heading(p.is_public ? 'Shown on your profile' : 'Will be shown when public');
+  const w = Math.max(...Object.keys(PROFILE_FIELDS).map((f) => f.length));
+  for (const [field, key] of Object.entries(PROFILE_FIELDS)) {
+    ui.log(`  ${p[key] ? sym.ok : sym.off} ${ui.padEnd(p[key] ? field : c.dim(field), w)}  ${c.dim(FIELD_LABELS[field])}`);
+  }
+  ui.log();
+  if (!me.user.username) ui.hint('Pick a username first:', 'tokenburn profile username <name>');
+  else if (!p.is_public) ui.hint('Publish it:', 'tokenburn profile public');
+  if (!Object.values(PROFILE_FIELDS).some((k) => p[k] && k !== 'show_github')) ui.hint('Choose what to show:', 'tokenburn profile show tokens,models,streaks');
+  else ui.hint('Change what\'s shown:', 'tokenburn profile show|hide <fields>');
 }
 
 async function statusCmd(store: Store, cfg: Config) {
   const ctx = ctxOf(cfg);
-  console.log(`Server:   ${cfg.api_url} (${cfg.device_token ? 'signed in' : 'not signed in'})`);
-  console.log(`Auto sync: ${serviceStatus()}`);
-  console.log(`Last sync: ${store.getMeta('last_sync_at') ?? 'never'}`);
+  ui.log();
+  ui.log(`${ui.logo()} ${c.dim(COLLECTOR_VERSION)}`);
+  ui.heading('This machine');
+  const svc = serviceStatus();
+  const svcOn = svc.startsWith('on');
   const err = store.getMeta('last_sync_error');
-  if (err) console.log(`Last error: ${err}`);
-  console.log('\nSources on this machine:');
+  ui.rows([
+    ['Server', cfg.api_url + (isLocalServer(cfg.api_url) ? c.yellow('  (local test server)') : '')],
+    ['Signed in', cfg.device_token ? `${sym.ok} yes` : `${sym.fail} no  ${c.dim('→')} ${ui.cmd('tokenburn login')}`],
+    ['Auto sync', svcOn ? `${sym.ok} ${svc}` : `${sym.off} ${svc}  ${c.dim('→')} ${ui.cmd('tokenburn service install')}`],
+    ['Last sync', ago(store.getMeta('last_sync_at'))],
+    ...(err ? [['Last error', c.red(err)] as [string, string]] : []),
+  ]);
+  if (isLocalServer(cfg.api_url)) {
+    ui.log();
+    serverNotice(cfg);
+  }
+
+  ui.heading('AI tools on this machine');
+  const lines: [string, string, string][] = [];
   for (const src of LOCAL_SOURCES) {
     const roots = src.roots(ctx);
-    console.log(`  ${roots.length ? '✓' : '·'} ${src.label.padEnd(14)} ${roots.length ? `${roots.length} location(s), billing ${src.billing(ctx).mode} (${src.billing(ctx).basis})` : 'not found'}`);
+    lines.push(roots.length
+      ? [sym.ok, src.label, `${plural(roots.length, 'location')} · billing: ${src.billing(ctx).mode}`]
+      : [sym.off, c.dim(src.label), c.dim('not found')]);
   }
-  console.log(`  ${cfg.cursor_auto_import ? '✓' : '·'} Cursor         ${cfg.cursor_auto_import ? `auto-import from ${cfg.downloads_dir ?? defaultDownloadsDir()}` : 'off: tokenburn cursor auto-import on (or import-cursor FILE)'}`);
-  console.log(`  ${cfg.openrouter_key ? '✓' : '·'} OpenRouter     ${cfg.openrouter_key ? `last fetch ${store.getMeta('openrouter_activity_last_fetch_at') ?? 'never'}` : 'not connected (tokenburn connect openrouter)'}`);
+  lines.push(cfg.cursor_auto_import
+    ? [sym.ok, 'Cursor', `auto-import from ${home(cfg.downloads_dir ?? defaultDownloadsDir())}`]
+    : [sym.off, c.dim('Cursor'), `${c.dim('off')}  ${c.dim('→')} ${ui.cmd('tokenburn cursor auto-import on')}`]);
+  lines.push(cfg.openrouter_key
+    ? [sym.ok, 'OpenRouter', `last fetched ${ago(store.getMeta('openrouter_activity_last_fetch_at'))}`]
+    : [sym.off, c.dim('OpenRouter'), `${c.dim('not connected')}  ${c.dim('→')} ${ui.cmd('tokenburn connect openrouter')}`]);
+  const w = Math.max(...lines.map(([, l]) => ui.visibleLength(l)));
+  for (const [s, l, d] of lines) ui.log(`  ${s} ${ui.padEnd(l, w)}  ${d}`);
+
   if (cfg.device_token) {
+    ui.heading('On the server');
     try {
       const s = await api(cfg, 'GET', '/api/me/summary');
-      console.log('\nOn the server:');
-      for (const x of s.sources) console.log(`  ${SOURCES[x.usage_source as keyof typeof SOURCES]?.label ?? x.usage_source}: ${x.events.toLocaleString('en-US')} requests, ${x.first_day} → ${x.last_day}`);
-      if (!s.sources.length) console.log('  nothing yet');
+      if (!s.sources.length) ui.note(`nothing yet  ${c.dim('→')} run tokenburn sync`);
+      const sw = Math.max(0, ...s.sources.map((x: any) => (SOURCES[x.usage_source as keyof typeof SOURCES]?.label ?? x.usage_source).length));
+      for (const x of s.sources) {
+        const label = SOURCES[x.usage_source as keyof typeof SOURCES]?.label ?? x.usage_source;
+        ui.log(`  ${ui.padEnd(label, sw)}  ${plural(x.events, 'request')} ${c.dim(`· ${x.first_day} → ${x.last_day}`)}`);
+      }
     } catch (e) {
-      console.log(`\nServer unreachable: ${(e as Error).message}`);
+      ui.warn(`Couldn't reach the server: ${(e as Error).message}`);
     }
   }
+  ui.log();
 }
 
 async function setup(store: Store, cfg: Config, args: string[]) {
-  console.log('tokenburn setup\n');
-  if (!cfg.device_token || flag(args, '--api')) await login(store, cfg, args);
-  console.log('\nLooking for AI coding tools on this machine…');
-  const c = await collectAll(store, cfg, { network: true });
-  c.lines.forEach((l) => console.log(l));
-  if (!c.lines.length) console.log('  none found yet. (Cursor usage comes from CSV exports instead.)');
+  const TOTAL = 5;
+  ui.log();
+  ui.log(`${ui.logo()} ${c.dim('setup')}`);
+  ui.log(c.dim('Five quick steps. Nothing is uploaded until you approve it.'));
 
-  if (!cfg.cursor_auto_import && process.stdin.isTTY) {
-    console.log('\nUsing Cursor? Cursor doesn\'t share usage with other apps, so tokenburn reads the CSV you download:');
-    console.log('  1. Open cursor.com → Dashboard → Usage and click Export CSV');
-    console.log(`  2. Leave the file in ${defaultDownloadsDir()} (any name; don't move it)`);
-    console.log('  3. Each sync imports new exports. Download a fresh one at least monthly; files older than 45 days are skipped.');
-    if (await confirm(`Import Cursor exports from ${defaultDownloadsDir()} automatically?`)) {
+  ui.step(1, TOTAL, 'Sign in with GitHub');
+  if (!cfg.device_token || flag(args, '--api')) await login(store, cfg, args, { inSetup: true });
+  else {
+    const me = await api(cfg, 'GET', '/api/me');
+    ui.ok(`Already signed in as ${c.bold(me.user.github_login)}`);
+    serverNotice(cfg);
+  }
+
+  ui.step(2, TOTAL, 'Find your AI coding tools');
+  const found = await ui.withSpinner('Scanning this machine…', () => collectAll(store, cfg, { network: true }));
+  if (found.found.length) printFound(found.found);
+  else {
+    ui.warn('No supported tools found yet.');
+    ui.note('Supported: Claude Code, Codex CLI, OpenCode, Gemini CLI, Grok CLI, Hermes. Use one, then run `tokenburn sync`.');
+  }
+
+  ui.step(3, TOTAL, 'Cursor (optional)');
+  if (cfg.cursor_auto_import) ui.ok(`Cursor auto-import is on (${home(cfg.downloads_dir ?? defaultDownloadsDir())})`);
+  else if (!process.stdin.isTTY) ui.note('Skipped. Turn it on later with `tokenburn cursor auto-import on`.');
+  else {
+    ui.log(c.dim('  Cursor doesn\'t share usage with other apps, so tokenburn reads the CSV you download:'));
+    ui.log(`  ${c.dim('1.')} Open ${ui.link('cursor.com/dashboard?tab=usage')} and click ${c.bold('Export CSV')}`);
+    ui.log(`  ${c.dim('2.')} Leave the file in ${c.bold(home(defaultDownloadsDir()))} ${c.dim('(any name, don\'t move it)')}`);
+    ui.log(`  ${c.dim('3.')} Every sync imports new exports. Download a fresh one at least monthly.`);
+    if (await confirm('Do you use Cursor? Turn on auto-import?')) {
       cfg.cursor_auto_import = true;
       saveConfig(cfg);
-      (await collectAll(store, cfg, { network: false })).lines.forEach((l) => console.log(l));
-    }
+      ui.ok('Cursor auto-import on');
+      const more = await collectAll(store, cfg, { network: false });
+      printFound(more.found.filter((f) => f.label === 'Cursor CSV'));
+    } else ui.note('Skipped. Turn it on later with `tokenburn cursor auto-import on`.');
   }
+
+  ui.step(4, TOTAL, 'Review and upload');
   const synced = await doSync(store, cfg, { yes: args.includes('--yes') });
   if (!synced) return;
 
-  if (args.includes('--no-service')) {
-    console.log('\nAutomatic sync not turned on. Run `tokenburn sync` when you like, or `tokenburn service install` later.');
-  } else if (runningFromNpxCache()) {
-    console.log('\nTo sync automatically, install it permanently first:\n  npm install -g use-tokenburn && tokenburn service install');
-  } else if (args.includes('--yes') || (await confirm(`\nSync automatically every ${INTERVAL_MIN} minutes? (nothing stays running between syncs)`))) {
-    console.log(installService());
+  ui.step(5, TOTAL, 'Automatic sync');
+  let auto = svcIsOn();
+  if (auto) ui.ok(`Already on: every ${INTERVAL_MIN} minutes`);
+  else if (args.includes('--no-service')) ui.note('Skipped. Turn it on later with `tokenburn service install`.');
+  else if (runningFromNpxCache()) {
+    ui.warn('Automatic sync needs tokenburn installed permanently:');
+    ui.hint('Install, then turn it on:', 'npm install -g use-tokenburn && tokenburn service install');
+  } else {
+    ui.log(c.dim(`  Your computer runs a quick sync every ${INTERVAL_MIN} minutes. Nothing stays running in between.`));
+    if (args.includes('--yes') || (await confirm('Turn on automatic sync?', true))) {
+      printService(installService());
+      auto = true;
+    } else ui.note('Skipped. Turn it on later with `tokenburn service install`.');
   }
-  console.log('\nDone. Next:\n  tokenburn stats              see your usage\n  tokenburn profile public     publish /@username (choose fields with `profile show`)');
+
+  const me = await api(cfg, 'GET', '/api/me').catch(() => null);
+  const profileUrl = me?.user.username ? new URL(`/@${me.user.username}`, cfg.api_url).toString() : null;
+  ui.log();
+  ui.box([
+    `${c.dim('Dashboard')}   ${ui.link(new URL('/dashboard', cfg.api_url).toString())}`,
+    `${c.dim('Profile')}     ${profileUrl ? `${ui.link(profileUrl)} ${c.dim(me?.profile?.is_public ? '(public)' : '(private)')}` : c.dim('pick a username first')}`,
+    `${c.dim('Auto sync')}   ${auto ? `on, every ${INTERVAL_MIN} min` : 'off'}`,
+    '',
+    `${c.bold('Try next')}`,
+    `${ui.cmd('tokenburn stats')}            ${c.dim('your usage in the terminal')}`,
+    `${ui.cmd('tokenburn profile public')}   ${c.dim('share your /@profile')}`,
+    `${ui.cmd('tokenburn status')}           ${c.dim('check everything is working')}`,
+  ], { title: c.green(c.bold('✔ You\'re all set')), tone: c.green });
+  ui.log();
+}
+
+const svcIsOn = () => serviceStatus().startsWith('on');
+function printService(msg: string) {
+  const [first, ...rest] = msg.split('\n');
+  ui.ok(first);
+  rest.forEach((l) => ui.note(l));
 }
 
 /**
@@ -367,7 +615,7 @@ async function watch(store: Store, cfg: Config) {
   const ctx = ctxOf(cfg);
   let timer: NodeJS.Timeout | null = null;
   let busy = false;
-  const log = (m: string) => console.log(`[${new Date().toISOString()}] ${m}`);
+  const time = () => c.dim(new Date().toLocaleTimeString());
   const tick = async () => {
     if (busy) return;
     busy = true;
@@ -377,11 +625,11 @@ async function watch(store: Store, cfg: Config) {
         await collectAll(store, fresh, { network: true });
         return runSync(store, fresh, health(store, fresh), await loadPrices());
       }, () => null);
-      if (r && (r.buckets || r.sessions || r.accountInserted)) log(`synced ${r.buckets} daily totals, ${r.sessions} sessions, ${r.accountInserted} account rows`);
+      if (r && (r.buckets || r.sessions || r.accountInserted)) ui.log(`${time()} ${sym.ok} ${syncSummary(r)}`);
       store.setMeta('last_sync_error', '');
     } catch (e) {
       store.setMeta('last_sync_error', String((e as Error).message ?? e));
-      log(`error: ${(e as Error).message ?? e}`);
+      ui.log(`${time()} ${sym.fail} ${(e as Error).message ?? e}`);
     } finally {
       busy = false;
     }
@@ -398,13 +646,15 @@ async function watch(store: Store, cfg: Config) {
           if (name && src.watchExtensions.some((x) => name.toString().endsWith(x))) schedule(5000);
         });
       } catch {
-        log(`can't watch ${root}; polling instead`);
+        ui.log(`${time()} ${sym.warn} can't watch ${home(root)}; checking every 2 minutes instead`);
       }
     }
   }
   // Poll fallback for missed events, SQLite-based sources, Downloads and OpenRouter. Unchanged files cost one stat().
   setInterval(() => schedule(0), 120_000);
-  log(`watching (${LOCAL_SOURCES.filter((s) => s.roots(ctx).length).map((s) => s.label).join(', ') || 'no local sources yet'})`);
+  const watched = LOCAL_SOURCES.filter((s) => s.roots(ctx).length).map((s) => s.label).join(', ') || 'no local tools yet';
+  ui.log(`${ui.logo()} ${c.dim('watch')}`);
+  ui.log(`${sym.info} Syncing live: ${watched}. ${c.dim('Press Ctrl+C to stop.')}`);
   await tick();
   await new Promise(() => {});
 }
@@ -438,23 +688,27 @@ async function revokeThisDevice(cfg: Config) {
   try {
     await api(cfg, 'POST', '/api/me/revoke');
   } catch (e) {
-    if (!/→ 401/.test(String(e))) console.warn(`Warning: couldn't revoke this device on the server (${(e as Error).message}). Remove it in Settings → Machines.`);
+    if (!(e instanceof ApiError && e.status === 401)) {
+      ui.warn(`Couldn't revoke this machine on the server (${(e as Error).message}). Remove it in Settings → Machines.`);
+    }
   }
 }
 
 async function main() {
   const [cmd, ...args] = process.argv.slice(2);
-  if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h') return console.log(HELP);
-  if (cmd === '--version' || cmd === 'version') return console.log(COLLECTOR_VERSION);
+  if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h') return printHelp();
+  if (cmd === '--version' || cmd === '-v' || cmd === 'version') return console.log(COLLECTOR_VERSION);
   const cfg = loadConfig();
 
   if (cmd === 'forget') {
-    if (!(await confirm(`Delete ${stateDir()} (local usage DB, config, device token, saved keys)?`))) return;
+    ui.warn(`This erases ${c.bold(home(stateDir()))}: collected usage, settings, sign-in and saved keys.`);
+    ui.note('Usage already uploaded stays on the server (delete it first with `tokenburn delete`).');
+    if (!(await confirm('Erase everything on this machine?'))) return ui.info('Nothing erased.');
     await revokeThisDevice(cfg);
     uninstallService();
     fs.rmSync(stateDir(), { recursive: true, force: true });
-    return console.log('Local state deleted and this machine signed out. Its uploaded history stays on the server\n' +
-      '(remove it in Settings → Machines, or run `tokenburn delete` before `forget` next time).');
+    ui.ok('Erased local data, signed this machine out and turned off auto sync.');
+    return ui.note('Its uploaded history stays on the server. Remove it in Settings → Machines if you like.');
   }
 
   const store = new Store(stateDir());
@@ -469,27 +723,32 @@ async function main() {
       Object.assign(cfg, { previous_token: cfg.device_token, device_token: null, first_sync_approved: false });
       saveConfig(cfg);
       uninstallService();
-      return console.log('Signed out: this machine\'s token is revoked and automatic sync is off. Uploaded data stays until you delete it.');
+      ui.ok('Signed out: this machine\'s token is revoked and automatic sync is off.');
+      return ui.note('Uploaded usage stays on your account. Run `tokenburn login` to sign back in.');
     }
     case 'scan': {
-      const c = await collectAll(store, cfg, { network: true });
-      console.log('Sources:');
-      c.lines.forEach((l) => console.log(l));
-      if (!c.lines.length) console.log('  none found');
-      console.log('\nCollected on this machine (nothing uploaded):');
+      const found = await ui.withSpinner('Scanning this machine…', () => collectAll(store, cfg, { network: true }));
+      ui.heading('Tools found');
+      if (found.found.length) printFound(found.found);
+      else ui.note('none yet');
+      ui.heading('Collected on this machine (nothing uploaded)');
       previewTable(store.events());
       const plan = planSync(store, cfg, await loadPrices());
-      console.log(`Next sync would upload ${plan.bucketUpserts.length} daily totals, ${plan.sessionUpserts.length} hashed session summaries, ${plan.accountEvents.length} account rows.`);
+      ui.log();
+      ui.info(`The next sync would upload ${plural(plan.bucketUpserts.length, 'daily total')}, ` +
+        `${plan.sessionUpserts.length.toLocaleString('en-US')} hashed session ${plan.sessionUpserts.length === 1 ? 'summary' : 'summaries'} and ${plural(plan.accountEvents.length, 'account row')}.`);
       return;
     }
     case 'sync':
       if (args.includes('--auto')) return autoSync(store, cfg);
+      serverNotice(cfg);
       await doSync(store, cfg, { yes: args.includes('--yes') });
       return;
     case 'watch':
       return watch(store, cfg);
     case 'stats': {
       await collectAll(store, cfg, { network: false });
+      ui.log();
       return console.log(renderStats(store.events(), Math.min(Math.max(Number(flag(args, '--days') ?? 30) || 30, 1), 365), await loadPrices()));
     }
     case 'status':
@@ -497,40 +756,50 @@ async function main() {
     case 'dashboard': {
       const url = new URL('/dashboard', cfg.api_url).toString();
       openBrowser(url);
-      return console.log(`Opening ${url} (sign in with the same GitHub account)`);
+      ui.ok(`Opening ${ui.link(url)}`);
+      return ui.note('Sign in with the same GitHub account you used here.');
     }
     case 'profile':
       return profileCmd(cfg, args);
 
     case 'import-cursor': {
       const file = args[0];
-      if (!file) throw new Error('Usage: tokenburn import-cursor FILE.csv');
+      if (!file) throw new Error('Usage: tokenburn import-cursor <file.csv>\n  Download it from cursor.com → Dashboard → Usage → Export CSV.');
+      if (!fs.existsSync(file)) throw new Error(`File not found: ${file}`);
       const r = await parseCursorCsv(fs.readFileSync(file, 'utf8'));
-      if (r.fatal) throw new Error(r.fatal);
-      console.log(`Rows: ${r.totalRows}, valid: ${r.records.length}, invalid: ${r.errors.length}, duplicate rows in file: ${r.duplicateRowsInFile}`);
-      console.log('Column mapping:', r.headerMapping);
-      r.errors.slice(0, 10).forEach((e) => console.log(`  line ${e.line}: ${e.reason}`));
-      if (r.cacheWriteUnknownRows) console.log(`Cache-write tokens unknown for ${r.cacheWriteUnknownRows} rows (totals didn't confirm column semantics).`);
+      if (r.fatal) throw new Error(`That doesn't look like a Cursor usage export: ${r.fatal}`);
+      ui.ok(`Read ${plural(r.totalRows, 'row')}: ${r.records.length} valid` +
+        (r.errors.length ? `, ${c.yellow(`${r.errors.length} skipped`)}` : '') + (r.duplicateRowsInFile ? `, ${r.duplicateRowsInFile} duplicates in the file` : ''));
+      ui.note(`Columns: ${Object.entries(r.headerMapping).map(([k, v]) => `${k}→${v}`).join(', ')}`);
+      r.errors.slice(0, 10).forEach((e) => ui.note(`line ${e.line}: ${e.reason}`));
+      if (r.cacheWriteUnknownRows) ui.note(`Cache-write tokens unknown for ${r.cacheWriteUnknownRows} rows (the file's totals didn't confirm the column).`);
       const fresh = r.records.filter((rec) => !store.getEvent(rec.dedupe_key));
-      console.log(`Already imported: ${r.records.length - fresh.length}`);
+      if (r.records.length - fresh.length) ui.note(`${r.records.length - fresh.length} rows were already imported earlier.`);
+      if (!fresh.length) return ui.info('Nothing new to import.');
+      ui.log();
       previewTable(fresh);
-      if (!fresh.length) return;
-      if (!args.includes('--yes') && !(await confirm(`Import ${fresh.length} records?`))) return;
+      ui.log();
+      if (!args.includes('--yes') && !(await confirm(`Import ${plural(fresh.length, 'row')}?`, true))) return ui.info('Nothing imported.');
       store.transaction(() => fresh.forEach((rec) => store.insertIfNew(rec)));
+      ui.ok(`Imported ${plural(fresh.length, 'row')}`);
       if (cfg.device_token && cfg.first_sync_approved) await doSync(store, cfg, { yes: true });
-      else console.log('Imported locally. It uploads on your next sync.');
+      else ui.note('Saved on this machine. It uploads on your next sync.');
       return;
     }
 
     case 'cursor': {
-      if (args[0] !== 'auto-import' || !['on', 'off'].includes(args[1])) throw new Error('Usage: tokenburn cursor auto-import on|off [--dir DIR]');
+      if (args[0] !== 'auto-import' || !['on', 'off'].includes(args[1])) throw new Error('Usage: tokenburn cursor auto-import on|off [--dir <folder>]');
       cfg.cursor_auto_import = args[1] === 'on';
       const dir = flag(args, '--dir');
       if (dir) cfg.downloads_dir = dir;
       saveConfig(cfg);
-      return console.log(cfg.cursor_auto_import
-        ? `Cursor auto-import on. Export your usage CSV from cursor.com → Dashboard → Usage and leave it in ${cfg.downloads_dir ?? defaultDownloadsDir()}; the next sync imports it. Files older than 45 days are skipped.`
-        : 'Cursor auto-import off.');
+      if (!cfg.cursor_auto_import) return ui.ok('Cursor auto-import off.');
+      ui.ok(`Cursor auto-import on. Watching ${c.bold(home(cfg.downloads_dir ?? defaultDownloadsDir()))}`);
+      ui.log();
+      ui.log(`  ${c.dim('1.')} Open ${ui.link('cursor.com/dashboard?tab=usage')} and click ${c.bold('Export CSV')}`);
+      ui.log(`  ${c.dim('2.')} Leave the file in that folder ${c.dim('(any name, don\'t move it)')}`);
+      ui.log(`  ${c.dim('3.')} The next sync imports it. Files older than 45 days are skipped.`);
+      return;
     }
 
     case 'connect':
@@ -539,93 +808,129 @@ async function main() {
       if (cmd === 'disconnect') {
         cfg.openrouter_key = null;
         saveConfig(cfg);
-        return console.log('OpenRouter key removed from this machine. Already-uploaded rows stay until `tokenburn delete --provider openrouter`.');
+        ui.ok('OpenRouter key removed from this machine.');
+        return ui.note('Rows already uploaded stay until you run `tokenburn delete --provider openrouter`.');
       }
-      console.log('OpenRouter usage comes from its /activity API, which needs a management key (openrouter.ai/settings/management-keys).');
-      console.log('The key is saved only in ~/.tokenburn/config.json (readable by you only) and sent only to openrouter.ai.');
-      console.log('A management key can also create and delete API keys: keep it private.');
-      const key = await askSecret('Management key: ');
-      if (!key) return console.log('Cancelled.');
-      const r = await collectOpenRouter(store, key);
+      ui.log(`${c.bold('Connect OpenRouter')}`);
+      ui.note('OpenRouter usage comes from its activity API, which needs a management key:');
+      ui.log(`  ${ui.link('https://openrouter.ai/settings/management-keys')}`);
+      ui.note('The key stays on this machine (~/.tokenburn/config.json, readable only by you) and is sent only to openrouter.ai.');
+      ui.warn('A management key can create and delete API keys. Keep it private.');
+      const key = await askSecret('Paste your management key:');
+      if (!key) return ui.info('Cancelled.');
+      const r = await ui.withSpinner('Checking the key…', () => collectOpenRouter(store, key));
       cfg.openrouter_key = key;
       saveConfig(cfg);
-      return console.log(`Connected. Pulled ${r.rows} daily rows (last 30 days). They upload on the next sync.`);
+      ui.ok(`Connected. Pulled ${plural(r.rows, 'daily row')} from the last 30 days.`);
+      return ui.note('They upload on the next sync.');
     }
 
     case 'delete': {
-      if (!cfg.device_token) throw new Error('Not signed in.');
+      requireSignIn(cfg);
       if (args.includes('--account')) {
-        const typed = flag(args, '--confirm') ?? await ask('This deletes your account, profile and all uploaded usage. Type "delete my account" to confirm: ');
+        ui.warn(`This ${c.bold('permanently')} deletes your account, profile and all uploaded usage.`);
+        const typed = flag(args, '--confirm') ?? await ask('Type "delete my account" to confirm:');
         await api(cfg, 'DELETE', '/api/me', { confirm: typed });
         uninstallService();
         Object.assign(cfg, { device_token: null, device_id: null, first_sync_approved: false });
         saveConfig(cfg);
         store.resetUploadState();
-        return console.log('Account deleted. Local data on this machine is kept; run `tokenburn forget` to remove it.');
+        ui.ok('Account deleted.');
+        return ui.note('Usage collected on this machine is kept. Run `tokenburn forget` to erase it too.');
       }
       const provider = flag(args, '--provider') ?? 'all';
-      if (provider !== 'all' && !PROVIDERS.includes(provider as Provider)) throw new Error(`Providers: ${PROVIDERS.join(', ')}`);
-      if (!args.includes('--yes') && !(await confirm(`Delete ${provider === 'all' ? 'all uploaded usage' : `uploaded ${provider} usage`} from the server?`))) return;
+      if (provider !== 'all' && !PROVIDERS.includes(provider as Provider)) throw new Error(`Unknown tool "${provider}". Use one of: ${PROVIDERS.join(', ')}`);
+      const what = provider === 'all' ? 'all your uploaded usage' : `your uploaded ${PROVIDER_LABELS[provider as Provider]} usage`;
+      if (!args.includes('--yes') && !(await confirm(`Delete ${what} from the server?`))) return ui.info('Nothing deleted.');
       await api(cfg, 'DELETE', `/api/me/data?provider=${provider}`);
       store.resetUploadState();
       store.deleteEvents(provider === 'all' ? undefined : provider);
       clearProviderState(store, cfg, provider === 'all' ? null : (provider as Provider));
-      return console.log('Deleted on the server and locally. The collector will re-collect from your tools on the next sync unless you `tokenburn logout`.');
+      ui.ok(`Deleted ${what} on the server and on this machine.`);
+      return ui.note('The next sync collects it again from your tools. Run `tokenburn logout` to stop syncing.');
     }
 
     case 'devices': {
-      if (!cfg.device_token) throw new Error('Not signed in.');
-      if (args[0] === 'remove' && args[1]) {
+      requireSignIn(cfg);
+      if (args[0] === 'remove') {
+        if (!args[1]) throw new Error('Usage: tokenburn devices remove <id>  (see the ids with `tokenburn devices`)');
         await api(cfg, 'DELETE', `/api/devices/${encodeURIComponent(args[1])}`);
-        return console.log('Device removed and its uploaded usage deleted.');
+        return ui.ok('Machine removed and the usage it uploaded deleted.');
       }
       const me = await api(cfg, 'GET', '/api/me');
+      ui.heading('Machines on your account');
+      const w = Math.max(...me.devices.map((d: any) => d.name.length));
       for (const d of me.devices) {
-        console.log(`${d.current ? '*' : ' '} ${d.id}  ${d.name.padEnd(24)} last sync ${d.last_sync_at ?? 'never'}${d.current ? '  (this machine)' : ''}`);
+        ui.log(`  ${d.current ? c.green('*') : ' '} ${ui.padEnd(d.current ? c.bold(d.name) : d.name, w)}  ${c.dim(`synced ${ago(d.last_sync_at)}`)}  ${c.gray(d.id)}${d.current ? c.green('  this machine') : ''}`);
       }
-      return console.log('\nRemove one (and the usage it uploaded): tokenburn devices remove <id>');
+      ui.log();
+      return ui.hint('Remove one (and the usage it uploaded):', 'tokenburn devices remove <id>');
     }
 
     case 'service': {
       const sub = args[0];
-      if (sub === 'install') return console.log(installService());
-      if (sub === 'uninstall') return console.log(uninstallService());
+      if (sub === 'install') return printService(installService());
+      if (sub === 'uninstall') return ui.ok(uninstallService());
       if (sub === 'logs') return console.log(fs.existsSync(logPath()) ? fs.readFileSync(logPath(), 'utf8').split('\n').slice(-40).join('\n') : 'No log yet.');
-      return console.log(`Automatic sync: ${serviceStatus()}`);
+      const s = serviceStatus();
+      return ui.log(`${s.startsWith('on') ? sym.ok : sym.off} Automatic sync: ${s}`);
     }
 
     case 'config': {
-      const [sub, a, b, c] = args;
+      const [sub, a, b, d] = args;
       if (sub === 'set' && a === 'billing-mode') {
-        if (!PROVIDERS.includes(b as Provider)) throw new Error(`Provider must be one of ${PROVIDERS.join(', ')}`);
-        if (c === 'auto') delete cfg.billing_overrides[b as Provider];
-        else if (BILLING_MODES.includes(c as BillingMode)) cfg.billing_overrides[b as Provider] = c as BillingMode;
+        if (!PROVIDERS.includes(b as Provider)) throw new Error(`Tool must be one of ${PROVIDERS.join(', ')}`);
+        if (d === 'auto') delete cfg.billing_overrides[b as Provider];
+        else if (BILLING_MODES.includes(d as BillingMode)) cfg.billing_overrides[b as Provider] = d as BillingMode;
         else throw new Error(`billing-mode must be auto or one of ${BILLING_MODES.join(', ')}`);
         saveConfig(cfg);
         const src = LOCAL_SOURCES.find((s) => s.provider === b);
         if (src) store.setBillingMode(b, src.billing(ctxOf(cfg)).mode);
-        return console.log(`${PROVIDER_LABELS[b as Provider]} billing mode: ${c}`);
+        return ui.ok(`${PROVIDER_LABELS[b as Provider]} billing mode: ${d}`);
       }
       if (sub === 'set' && a === 'api-url' && b) {
         cfg.api_url = b;
         saveConfig(cfg);
-        return console.log(`Server: ${b}`);
+        ui.ok(`Server: ${b}`);
+        return ui.note('Sign in to it with `tokenburn login`.');
       }
       if (sub === 'add-dir' && PROVIDERS.includes(a as Provider) && b) {
         cfg.extra_dirs[a as Provider] = [...new Set([...(cfg.extra_dirs[a as Provider] ?? []), b])];
         saveConfig(cfg);
-        return console.log(`Added ${b} for ${a}`);
+        return ui.ok(`Added ${b} for ${PROVIDER_LABELS[a as Provider]}`);
       }
-      throw new Error('Unknown config command. See `tokenburn help`.');
+      throw new Error('Unknown config command. Run `tokenburn help` to see the options.');
     }
 
-    default:
-      console.log(HELP);
+    default: {
+      const guess = suggest(cmd);
+      ui.fail(`Unknown command "${cmd}".`);
+      if (guess) ui.hint('Did you mean', `tokenburn ${guess}`);
+      ui.hint('See all commands:', 'tokenburn help');
       process.exitCode = 1;
+    }
+  }
+}
+
+/** Plain-language error plus what to do about it. */
+function explain(e: unknown) {
+  const msg = e instanceof Error ? e.message : String(e);
+  const [first, ...rest] = msg.split('\n');
+  ui.fail(first);
+  rest.forEach((l) => console.error(c.dim(l)));
+  const hintErr = (text: string, command?: string) => console.error(`  ${sym.arrow} ${text}${command ? `  ${ui.cmd(command)}` : ''}`);
+  if (e instanceof NetworkError) {
+    hintErr('Check your internet connection and try again.');
+    const url = loadConfig().api_url;
+    if (isLocalServer(url)) hintErr('This machine points at a local test server. To use the real site:', `tokenburn login --api ${DEFAULT_API_URL}`);
+  } else if (e instanceof ApiError) {
+    if (e.status === 401) hintErr('This machine needs to sign in again:', 'tokenburn login');
+    else if (e.status === 429) hintErr('Too many requests. Wait a minute and try again.');
+    else if (e.status >= 500) hintErr('The server had a problem. Try again in a few minutes.');
   }
 }
 
 main().catch((e) => {
-  console.error(`Error: ${e instanceof Error ? e.message : e}`);
+  explain(e);
   process.exit(1);
 });

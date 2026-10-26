@@ -547,7 +547,7 @@ function ProfilePreview({ profile }: { profile: PublicProfile }) {
       </div>
       {/* The page scrolls inside the frame, like a real browser window. */}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <ProfileHeader handle={profile.username} />
+        <ProfileHeader />
         <div className="mx-auto grid w-full max-w-3xl grid-cols-1 gap-6 px-4 pt-2 pb-8 sm:px-6">
           <ProfileView profile={profile} preview />
           <p className="text-xs text-subtle">

@@ -5,7 +5,7 @@ import { aggregateDaily, bucketKey, estimateCost, uploadModelId, SOURCES, USAGE_
 import type { Config } from './config.ts';
 import type { Store } from './store.ts';
 
-export const COLLECTOR_VERSION = '0.3.0';
+export const COLLECTOR_VERSION = '0.3.1';
 const sha = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
 
 export interface SessionUpload {
@@ -75,6 +75,18 @@ export function assertSafeApiUrl(apiUrl: string) {
   }
 }
 
+/** The server answered with an error; `message` is its explanation, `status` the HTTP status. */
+export class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+/** The server couldn't be reached at all (offline, wrong URL, local server not running). */
+export class NetworkError extends Error {}
+
 export async function api(cfg: Config, method: string, p: string, body?: unknown): Promise<any> {
   assertSafeApiUrl(cfg.api_url);
   let res: Response;
@@ -89,14 +101,15 @@ export async function api(cfg: Config, method: string, p: string, body?: unknown
       signal: AbortSignal.timeout(30_000),
     });
   } catch (e) {
-    throw new Error(`Can't reach ${cfg.api_url} (${(e as Error).cause ? String((e as any).cause.code ?? (e as any).cause) : (e as Error).message}). Will retry on the next sync.`);
+    const why = (e as Error).cause ? String((e as any).cause.code ?? (e as any).cause) : (e as Error).message;
+    throw new NetworkError(`Can't reach ${cfg.api_url} (${why}). Will retry on the next sync.`);
   }
   const text = await res.text();
   let json: any = null;
   try {
     json = JSON.parse(text);
   } catch {}
-  if (!res.ok) throw new Error(`${method} ${p} → ${res.status}: ${json?.error ?? text.slice(0, 200)}`);
+  if (!res.ok) throw new ApiError(res.status, json?.error ?? (text.slice(0, 200) || `Request failed (${res.status})`));
   return json;
 }
 

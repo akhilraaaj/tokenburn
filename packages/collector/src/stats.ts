@@ -4,10 +4,9 @@ import {
   activityStats, estimateCost, modelDisplayName, PROVIDER_LABELS, SOURCES, totalTokens,
   type PriceTable, type Provider, type UsageRecord,
 } from '../../shared/src/index.ts';
+import { c } from './ui.ts';
 
-const tty = process.stdout.isTTY && !process.env.NO_COLOR;
-const dim = (s: string) => (tty ? `\x1b[2m${s}\x1b[0m` : s);
-const bold = (s: string) => (tty ? `\x1b[1m${s}\x1b[0m` : s);
+const { dim, bold } = c;
 
 export function compact(n: number | null): string {
   if (n === null) return 'n/a';
@@ -26,7 +25,7 @@ const BLOCKS = '▁▂▃▄▅▆▇█';
 function sparkline(values: number[]): string {
   const max = Math.max(...values);
   if (max <= 0) return dim('·'.repeat(values.length));
-  return values.map((v) => (v <= 0 ? dim('·') : BLOCKS[Math.min(7, Math.floor((v / max) * 7.999))])).join('');
+  return values.map((v) => (v <= 0 ? dim('·') : c.blue(BLOCKS[Math.min(7, Math.floor((v / max) * 7.999))]))).join('');
 }
 
 function pad(s: string, n: number, right = false) {
@@ -59,7 +58,7 @@ export function renderStats(events: UsageRecord[], days: number, prices: PriceTa
   const today = new Date().toISOString().slice(0, 10);
   const since = new Date(Date.now() - (days - 1) * 864e5).toISOString().slice(0, 10);
   const inRange = events.filter((e) => e.occurred_at.slice(0, 10) >= since);
-  if (!inRange.length) return `No usage in the last ${days} days. Run \`tokenburn scan\` to collect.`;
+  if (!inRange.length) return `No usage in the last ${days} days on this machine. Use one of your AI tools, then run \`tokenburn stats\` again.`;
   const dayList: string[] = [];
   for (let d = new Date(since + 'T00:00:00Z'); d.toISOString().slice(0, 10) <= today; d.setUTCDate(d.getUTCDate() + 1)) dayList.push(d.toISOString().slice(0, 10));
 
@@ -77,7 +76,7 @@ export function renderStats(events: UsageRecord[], days: number, prices: PriceTa
   const totalTok = inRange.reduce((n, r) => n + totalTokens(r), 0);
 
   const out: string[] = [
-    bold(`Last ${days} days (UTC)`),
+    `${bold(`Your usage · last ${days} days`)} ${dim('(UTC, this machine)')}`,
     `  ${bold(compact(totalTok))} total tokens ${dim('(input + output + cache, all tools; tools count differently, see below)')}`,
     `  ${bold(usd(all.cost))} estimated cost ${dim(all.billed ? `(${usd(all.billed)} billed by providers; rest is an API-list-price estimate, not your bill)` : '(API list prices, not your bill)')}` +
       (all.unpriced ? dim(` · ${all.unpriced.toLocaleString('en-US')} requests unpriced`) : ''),
@@ -102,7 +101,7 @@ export function renderStats(events: UsageRecord[], days: number, prices: PriceTa
       add(m, r, prices);
       models.set(r.model_id, m);
     }
-    out.push(`${bold(PROVIDER_LABELS[p])}  ${dim(src.label)}`);
+    out.push(`${c.orange('■')} ${bold(PROVIDER_LABELS[p])}  ${dim(src.label)}`);
     out.push(`  ${compact(tot.output)} output · ${compact(tot.input)} input ${dim(`(${src.inputNote})`)}`);
     out.push(`  ${compact(tot.cr)} cache read · ${compact(tot.cw)} cache write · ${tot.req.toLocaleString('en-US')} requests` +
       (src.sessions ? ` · ${sessions.size} sessions` : dim(' · sessions n/a')) + ` · ${usd(tot.cost)}${tot.billed ? ' (billed)' : ' est.'}`);

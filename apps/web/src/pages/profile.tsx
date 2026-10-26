@@ -6,7 +6,6 @@ import { CONTRIBUTION_DAYS, type PublicProfile } from '../../../../packages/shar
 import { GitHubMark, Wordmark } from '@/components/brand';
 import { ActivityCard, ContributionGraph, DailyBarsCard, ModelBreakdown, StreakCard, WeekdayChart } from '@/components/profile-widgets';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -45,39 +44,105 @@ function ShareButton({ url }: { url: string }) {
   );
   return (
     <Button size="sm" variant="outline" onClick={copy} aria-label="Copy profile link">
-      {copied ? <Check /> : <Link2 />}{copied ? 'Copied' : 'Share'}
+      {copied ? <Check /> : <Link2 />}<span className="max-sm:sr-only">{copied ? 'Copied' : 'Share'}</span>
     </Button>
+  );
+}
+
+/** Top-right of the profile header: Share for everyone, Edit profile for the owner. */
+function ProfileActions({ username, preview }: { username: string; preview: boolean }) {
+  const { user } = useSession();
+  const own = !preview && user?.username === username;
+  return (
+    <div className="flex shrink-0 items-center gap-2 self-start">
+      <ShareButton url={`${window.location.origin}/@${username}`} />
+      {own && (
+        <Button asChild size="sm" aria-label="Edit profile">
+          <Link to="/dashboard/settings"><Pencil /><span className="max-sm:sr-only">Edit profile</span></Link>
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/** Card shell with a title, subtitle and toolbar placeholder, like the profile widgets. */
+function WidgetSkeleton({ children, toolbar = true }: { children: ReactNode; toolbar?: boolean }) {
+  return (
+    <Card>
+      <CardContent className="grid gap-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="grid gap-2">
+            <Skeleton className="h-4 w-36" />
+            <Skeleton className="h-3 w-24" />
+          </div>
+          {toolbar && <Skeleton className="h-8 w-32 rounded-lg" />}
+        </div>
+        {children}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Loading state shaped like the profile: header, daily chart, activity, widget pair, contributions, models. */
+function ProfileSkeleton() {
+  return (
+    <div className="mx-auto grid w-full max-w-3xl grid-cols-1 gap-6 px-4 pt-6 pb-12 sm:px-6" aria-busy="true" aria-label="Loading profile">
+      <section className="flex items-center gap-4 pb-2 sm:gap-5">
+        <Skeleton className="size-14 shrink-0 rounded-full sm:size-16" />
+        <div className="grid min-w-0 flex-1 gap-2">
+          <Skeleton className="h-5 w-40" />
+          <Skeleton className="h-3.5 w-48" />
+          <div className="flex gap-2">
+            <Skeleton className="h-5 w-20 rounded-full" />
+            <Skeleton className="h-5 w-16 rounded-full" />
+            <Skeleton className="h-5 w-24 rounded-full" />
+          </div>
+        </div>
+        <Skeleton className="h-8 w-8 shrink-0 self-start rounded-md sm:w-20" />
+      </section>
+      <WidgetSkeleton>
+        <div className="flex flex-wrap gap-3">{[28, 36, 24, 32].map((w, i) => <Skeleton key={i} className="h-3" style={{ width: `${w * 4}px` }} />)}</div>
+        <div className="flex h-48 items-end gap-1">
+          {Array.from({ length: 30 }, (_, i) => (
+            <Skeleton key={i} className="flex-1 rounded-sm" style={{ height: `${25 + ((i * 37) % 70)}%` }} />
+          ))}
+        </div>
+      </WidgetSkeleton>
+      <WidgetSkeleton>
+        <Skeleton className="h-8 w-44" />
+        <Skeleton className="h-20 w-full" />
+      </WidgetSkeleton>
+      <div className="grid gap-6 md:grid-cols-2">
+        <WidgetSkeleton toolbar={false}><Skeleton className="h-28 w-full" /></WidgetSkeleton>
+        <WidgetSkeleton toolbar={false}><Skeleton className="h-28 w-full" /></WidgetSkeleton>
+      </div>
+      <WidgetSkeleton toolbar={false}><Skeleton className="h-28 w-full" /></WidgetSkeleton>
+      <WidgetSkeleton>
+        <div className="grid gap-3">{Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-5 w-full" />)}</div>
+      </WidgetSkeleton>
+    </div>
   );
 }
 
 function ProfileFrame({ handle, children }: { handle: string; children: ReactNode }) {
   return (
     <div className="flex min-h-svh flex-col">
-      <ProfileHeader handle={handle} />
+      <ProfileHeader />
       <main className="flex-1">{children}</main>
     </div>
   );
 }
 
-/** Profiles get a bare top bar: the logo, and actions that depend on who's looking. */
-export function ProfileHeader({ handle }: { handle: string }) {
+/** Profiles get a bare top bar: the logo, plus Dashboard or sign-in. Share and Edit live in the profile header. */
+export function ProfileHeader() {
   const { user, loading } = useSession();
-  const own = !!user && user.username === handle;
-  const url = `${window.location.origin}/@${handle}`;
   return (
-    <header className="mx-auto flex h-16 w-full max-w-3xl items-center justify-between gap-3 px-4 sm:px-6">
+    <header className="flex h-16 w-full items-center justify-between gap-3 px-4 sm:px-6">
       <Wordmark to={user ? '/dashboard' : '/'} />
       {!loading && (
         <div className="flex items-center gap-2">
           {user ? (
-            <>
-              <ShareButton url={url} />
-              {own ? (
-                <Button asChild size="sm"><Link to="/dashboard/settings"><Pencil />Edit profile</Link></Button>
-              ) : (
-                <Button asChild size="sm"><Link to="/dashboard"><LayoutDashboard />Dashboard</Link></Button>
-              )}
-            </>
+            <Button asChild size="sm" variant="ghost"><Link to="/dashboard">Dashboard</Link></Button>
           ) : (
             <>
               <Button asChild size="sm" variant="ghost"><a href="/login">Sign in</a></Button>
@@ -119,18 +184,10 @@ function ProfileBody({ handle }: { handle: string }) {
       </div>
     ) : <NotFound message="This profile doesn't exist or is private." />;
   }
-  if (!profile) {
-    return (
-      <div className="mx-auto grid w-full max-w-3xl gap-6 px-4 py-6 sm:px-6">
-        <Skeleton className="h-36 rounded-xl" />
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">{Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}</div>
-        <Skeleton className="h-72 rounded-xl" />
-      </div>
-    );
-  }
+  if (!profile) return <ProfileSkeleton />;
 
   return (
-    <div className="mx-auto grid w-full max-w-3xl grid-cols-1 gap-6 px-4 pt-2 pb-12 sm:px-6">
+    <div className="mx-auto grid w-full max-w-3xl grid-cols-1 gap-6 px-4 pt-6 pb-12 sm:px-6">
       <ProfileView profile={profile} />
       <p className="text-xs text-subtle">
         Token counts come from each tool's own records and aren't comparable across tools in every detail.
@@ -175,44 +232,45 @@ export function ProfileView({ profile, preview = false }: { profile: PublicProfi
 
   return (
     <>
-      <Card className="gap-0 overflow-hidden py-0">
-        <CardContent className="flex items-center gap-5 p-5 sm:p-6">
-          <Avatar className="size-16 rounded-2xl border sm:size-20">
-            {profile.github && <AvatarImage src={profile.github.avatar_url} alt="" className="rounded-2xl" />}
-            <AvatarFallback className="rounded-2xl text-xl sm:text-2xl">{name.slice(0, 2).toUpperCase()}</AvatarFallback>
-          </Avatar>
-          <div className="grid min-w-0 flex-1 gap-1.5">
-            <div className="grid gap-0.5">
-              <h1 className="truncate text-2xl font-semibold tracking-tight">{name}</h1>
-              <p className="text-sm text-muted-foreground">@{profile.username}</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+      <section className="flex items-center gap-4 pb-2 sm:gap-5">
+        <Avatar className="size-14 shrink-0 rounded-full ring-1 ring-border ring-offset-2 ring-offset-background sm:size-16">
+          {profile.github && <AvatarImage src={profile.github.avatar_url} alt="" className="rounded-full" />}
+          <AvatarFallback className="rounded-full text-base">{name.slice(0, 2).toUpperCase()}</AvatarFallback>
+        </Avatar>
+        <div className="grid min-w-0 flex-1 gap-2">
+          <div className="grid gap-0.5">
+            <h1 className="truncate text-lg font-semibold leading-tight tracking-tight sm:text-xl">{name}</h1>
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[13px] text-muted-foreground">
+              <span>@{profile.username}</span>
               {profile.github && (
-                <a href={`https://github.com/${profile.github.login}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 hover:text-foreground">
-                  <GitHubMark className="size-3.5" />{profile.github.login}
-                </a>
+                <>
+                  <span className="text-subtle" aria-hidden="true">·</span>
+                  <a href={`https://github.com/${profile.github.login}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-foreground">
+                    <GitHubMark className="size-3" />{profile.github.login}
+                  </a>
+                </>
               )}
+            </div>
+          </div>
+          {(profile.first_day || sessions.all !== undefined || providers.length > 0) && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-subtle">
               {profile.first_day && (
-                <span className="inline-flex items-center gap-1.5"><CalendarDays className="size-3.5" />Tracking since {dayLabel(profile.first_day)}</span>
+                <span className="inline-flex items-center gap-1"><CalendarDays className="size-3" />Since {dayLabel(profile.first_day)}</span>
               )}
               {sessions.all !== undefined && (
-                <span className="inline-flex items-center gap-1.5"><MessagesSquare className="size-3.5" />{plural(sessions.all, 'session')} in 90 days</span>
+                <span className="inline-flex items-center gap-1"><MessagesSquare className="size-3" />{plural(sessions.all, 'session')}</span>
               )}
+              {providers.map((p) => (
+                <span key={p} className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-muted-foreground">
+                  {providerLabel(p)}
+                  {sessions[p] !== undefined && <span className="num text-subtle">{sessions[p]}</span>}
+                </span>
+              ))}
             </div>
-          </div>
-        </CardContent>
-        {providers.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 border-t bg-surface-2/40 px-5 py-3 sm:px-6">
-            <span className="mr-1 text-xs text-subtle">Builds with</span>
-            {providers.map((p) => (
-              <Badge key={p} variant="outline" className="gap-1.5 bg-card font-normal">
-                {providerLabel(p)}
-                {sessions[p] !== undefined && <span className="num text-subtle">· {plural(sessions[p], 'session')}</span>}
-              </Badge>
-            ))}
-          </div>
-        )}
-      </Card>
+          )}
+        </div>
+        <ProfileActions username={profile.username} preview={preview} />
+      </section>
 
       {hasTrend && <DailyBarsCard rows={profile.daily!} since={start} metric={metric} colorOf={colorOf} />}
 

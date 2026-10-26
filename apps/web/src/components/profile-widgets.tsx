@@ -369,12 +369,6 @@ export function StreakCard({ profile, since }: { profile: PublicProfile; since: 
     <TrendCard
       label="Current streak"
       value={current ? days(current) : 'No streak'}
-      footer={
-        <>
-          <span>Longest <span className="num text-foreground">{days(h.longestStreak ?? 0)}</span></span>
-          <span><span className="num text-foreground">{fmt(h.activeDays ?? 0)}</span> active days in total</span>
-        </>
-      }
     >
       {points && (
         <AreaChart
