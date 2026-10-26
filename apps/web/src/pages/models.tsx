@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { ModelTable } from '@/components/model-table';
-import { Segmented } from '@/components/segmented';
+import { Pills } from '@/components/pills';
 import { Card, CardContent } from '@/components/ui/card';
 import { useDashboard } from '@/layouts/app-layout';
 import { colorMap } from '@/lib/series.ts';
@@ -16,7 +16,7 @@ export function Models() {
       <PageHeading
         title="Models"
         description="Every model you used, exactly as each tool reported it"
-        action={<Segmented label="Range" items={RANGES} value={days} onChange={setDays} />}
+        action={<Pills label="Range" items={RANGES} value={days} onChange={setDays} />}
       />
       <Card className="py-0">
         <CardContent className="px-0">

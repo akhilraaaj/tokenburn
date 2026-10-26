@@ -3,6 +3,7 @@ import { ChevronDown } from 'lucide-react';
 import type { PublicProfile } from '../../../../packages/shared/src/index.ts';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { dayLabel, fmt, usd } from '@/lib/format.ts';
+import { Pills } from '@/components/pills';
 import { UsageChart } from '@/components/usage-chart';
 import { daysFrom, METRIC_LABEL, modelDisplayName, providerLabel, rowTokens, seriesColor, seriesKey, type Metric, type Row } from '@/lib/series.ts';
 import { cn } from '@/lib/utils';
@@ -30,41 +31,6 @@ function Widget({ title, description, action, children }: { title: string; descr
       </CardHeader>
       <CardContent className="mt-auto">{children}</CardContent>
     </Card>
-  );
-}
-
-/**
- * A compact single-choice switch for card headers: a muted track with the active option raised, readable labels,
- * and an optional lead-in ("Sort by").
- */
-function Pills<T extends string>({ items, value, onChange, label, lead }: {
-  items: [T, string][];
-  value: T;
-  onChange: (v: T) => void;
-  label: string;
-  lead?: string;
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      {lead && <span className="text-xs text-subtle">{lead}</span>}
-      <div role="radiogroup" aria-label={label} className="inline-flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
-        {items.map(([v, l]) => (
-          <button
-            key={v}
-            type="button"
-            role="radio"
-            aria-checked={v === value}
-            onClick={() => onChange(v)}
-            className={cn(
-              'h-7 rounded-md px-2.5 text-xs font-medium whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none',
-              v === value ? 'bg-card text-foreground shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {l}
-          </button>
-        ))}
-      </div>
-    </div>
   );
 }
 
@@ -205,8 +171,8 @@ export function AreaChart({ points, color, format, height = 140, xLabels, mark }
   height?: number;
   /** One point called out with a dot and a short label (e.g. the best day). */
   mark?: { index: number; label: string };
-  /** Labels under the chart, spread evenly from first to last point. */
-  xLabels: string[];
+  /** Labels under the chart, spread evenly from first to last point; none for a bare sparkline. */
+  xLabels?: string[];
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<number | null>(null);
@@ -267,9 +233,11 @@ export function AreaChart({ points, color, format, height = 140, xLabels, mark }
           </>
         )}
       </div>
-      <div className="flex justify-between gap-2 text-xs text-subtle">
-        {xLabels.map((l, i) => <span key={i}>{l}</span>)}
-      </div>
+      {xLabels && xLabels.length > 0 && (
+        <div className="flex justify-between gap-2 text-xs text-subtle">
+          {xLabels.map((l, i) => <span key={i}>{l}</span>)}
+        </div>
+      )}
     </div>
   );
 }

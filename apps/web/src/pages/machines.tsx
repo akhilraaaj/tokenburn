@@ -1,9 +1,9 @@
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Laptop } from 'lucide-react';
 import { CopyCommand } from '@/components/copy-command';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useDashboard } from '@/layouts/app-layout';
+import { cn } from '@/lib/utils';
 import { timeAgo } from '@/lib/format.ts';
 import { sourceDef } from '@/lib/series.ts';
 import { DashboardSkeleton, PageHeading } from './overview';
@@ -15,45 +15,39 @@ export function Machines() {
   return (
     <>
       <PageHeading title="Machines" description="Computers that sync usage to your account" />
-      <Card className="py-0">
-        <CardContent className="px-0">
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead>Device</TableHead>
-                <TableHead>Last sync</TableHead>
-                <TableHead>Sources found</TableHead>
-                <TableHead className="text-right">Version</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.devices.length ? data.devices.map((d) => {
-                const stale = !d.last_sync_at || Date.now() - Date.parse(d.last_sync_at) > 2 * 864e5;
-                const found = [...new Set(Object.keys(d.health?.sources ?? {}).map((s) => sourceDef(s)?.label.split(' ')[0] ?? s))];
-                return (
-                  <TableRow key={d.id}>
-                    <TableCell className="font-medium">{d.name}</TableCell>
-                    <TableCell title={d.last_sync_at ?? ''}>
-                      <span className="inline-flex items-center gap-1.5">
-                        {stale && <AlertTriangle className="size-3.5 text-warn-ink" />}
-                        {timeAgo(d.last_sync_at)}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {found.length ? found.map((f) => <Badge key={f} variant="secondary" className="font-normal">{f}</Badge>) : <span className="text-subtle">—</span>}
-                      </div>
-                    </TableCell>
-                    <TableCell className="num text-right text-muted-foreground">{d.collector_version ?? '—'}</TableCell>
-                  </TableRow>
-                );
-              }) : (
-                <TableRow><TableCell colSpan={4} className="py-8 text-center text-subtle">No machines yet</TableCell></TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      {data.devices.length ? (
+        <div className={cn('grid gap-4', data.devices.length > 1 && 'md:grid-cols-2')}>
+          {data.devices.map((d) => {
+            const stale = !d.last_sync_at || Date.now() - Date.parse(d.last_sync_at) > 2 * 864e5;
+            const found = [...new Set(Object.keys(d.health?.sources ?? {}).map((s) => sourceDef(s)?.label.split(' ')[0] ?? s))];
+            return (
+              <Card key={d.id} className="gap-4">
+                <CardHeader className="flex items-start gap-3">
+                  <span className="flex size-10 flex-none items-center justify-center rounded-xl border bg-surface-2/60"><Laptop className="size-5 text-muted-foreground" /></span>
+                  <div className="grid min-w-0 flex-1 gap-1">
+                    <CardTitle className="truncate">{d.name}</CardTitle>
+                    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" title={d.last_sync_at ?? ''}>
+                      {stale
+                        ? <AlertTriangle className="size-3.5 text-warn-ink" />
+                        : <span className="size-1.5 rounded-full" style={{ background: 'var(--series-3)' }} />}
+                      {d.last_sync_at ? `Synced ${timeAgo(d.last_sync_at)}` : 'Never synced'}
+                    </span>
+                  </div>
+                  {d.collector_version && <Badge variant="outline" className="num font-normal text-muted-foreground">v{d.collector_version}</Badge>}
+                </CardHeader>
+                <CardContent className="grid gap-2 border-t pt-4">
+                  <span className="text-xs text-subtle">Sources found</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {found.length ? found.map((f) => <Badge key={f} variant="secondary" className="font-normal">{f}</Badge>) : <span className="text-sm text-subtle">None yet</span>}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      ) : (
+        <Card><CardContent className="py-10 text-center text-sm text-subtle">No machines yet</CardContent></Card>
+      )}
       <Card>
         <CardHeader>
           <CardTitle>Add a machine</CardTitle>

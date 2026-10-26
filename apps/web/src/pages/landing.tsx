@@ -1,11 +1,11 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  ArrowDown, ArrowRight, AtSign, BarChart3, CalendarDays, Check, CheckCircle2, ChevronDown, CloudUpload, Coins, Flame, Globe, Laptop, Layers, Lock, RefreshCw, Terminal,
+  ArrowDown, ArrowRight, AtSign, BarChart3, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight, CloudUpload, Coins, Flame, Globe, Laptop, Layers, Lock, RefreshCw, Terminal,
 } from 'lucide-react';
 import { GitHubMark, LogoMark } from '@/components/brand';
 import { CopyCommand } from '@/components/copy-command';
-import { Stat, StatGrid } from '@/components/stats';
+import { Pills } from '@/components/pills';
 import { UsageChart } from '@/components/usage-chart';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -14,11 +14,12 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CONTRIBUTION_DAYS, contributionDays, type DailyRow, type DayTotal, type PublicProfile, type PublicRow } from '../../../../packages/shared/src/index.ts';
-import { compact } from '@/lib/format.ts';
-import { colorMap, rowTokens, type Row } from '@/lib/series.ts';
+import { compact, fmt, plural, usd } from '@/lib/format.ts';
+import { colorMap, daysFrom, rowTokens, type Metric, type Row } from '@/lib/series.ts';
 import { cn } from '@/lib/utils';
-import { AreaChart } from '@/components/profile-widgets';
+import { AreaChart, perDay } from '@/components/profile-widgets';
 import { useSession } from '@/session';
+import { KpiCard, streakRuns } from './overview';
 import { ProfileHeader, ProfileView } from './profile';
 
 const INSTALL = 'npm install -g use-tokenburn && tokenburn setup';
@@ -75,15 +76,15 @@ const ERRORS: Record<string, string> = {
 
 /** Illustrative data for the preview card (clearly labeled as an example on the page). */
 function exampleRows(): { rows: Row[]; since: string } {
-  const since = new Date(Date.now() - 20 * 864e5).toISOString().slice(0, 10);
-  const shape = [3, 5, 2, 8, 6, 9, 4, 0, 7, 11, 6, 8, 12, 5, 9, 14, 7, 10, 13, 8, 11];
+  const since = new Date(Date.now() - 29 * 864e5).toISOString().slice(0, 10);
+  const shape = [4, 6, 3, 0, 5, 7, 2, 3, 5, 2, 8, 6, 9, 4, 6, 7, 11, 6, 8, 12, 5, 9, 14, 7, 10, 13, 8, 11, 12, 9];
   const rows: Row[] = [];
   shape.forEach((v, i) => {
     const day = new Date(Date.parse(since) + i * 864e5).toISOString().slice(0, 10);
     if (!v) return;
-    rows.push({ day, provider: 'claude_code', model_id: 'claude-opus-5-5', events: v * 40, output_tokens: v * 52000 });
-    rows.push({ day, provider: 'codex', model_id: 'gpt-5-codex', events: v * 12, output_tokens: Math.round(v * 21000 * (1 + (i % 3) / 3)) });
-    if (i % 4 === 0) rows.push({ day, provider: 'cursor', model_id: 'auto', events: 6, output_tokens: 38000 });
+    rows.push({ day, provider: 'claude_code', model_id: 'claude-opus-5-5', events: v * 40, output_tokens: v * 52000, cache_read_tokens: v * 2.1e6, cost_usd: v * 1.9 });
+    rows.push({ day, provider: 'codex', model_id: 'gpt-5-codex', events: v * 12, output_tokens: Math.round(v * 21000 * (1 + (i % 3) / 3)), cache_read_tokens: v * 6e5, cost_usd: v * 0.6 });
+    if (i % 4 === 0) rows.push({ day, provider: 'cursor', model_id: 'auto', events: 6, output_tokens: 38000, cache_read_tokens: 9e5, cost_usd: 0.4 });
   });
   return { rows, since };
 }
@@ -271,29 +272,7 @@ export function Landing() {
 
         {/* Product preview + tools */}
         <section className="grid grid-cols-1 gap-8 animate-in fade-in slide-in-from-bottom-6 duration-1000">
-          <div className="relative">
-            <Card className="gap-0 overflow-hidden p-0 shadow-xl shadow-black/5">
-              <div className="flex items-center gap-2 border-b bg-surface-2/50 px-4 py-2.5">
-                <span className="size-2.5 rounded-full bg-border" />
-                <span className="size-2.5 rounded-full bg-border" />
-                <span className="size-2.5 rounded-full bg-border" />
-                <span className="ml-3 truncate font-mono text-xs text-subtle">tokenburn · dashboard</span>
-                <Badge variant="secondary" className="ml-auto font-normal">Example data</Badge>
-              </div>
-              <div className="grid gap-6 p-4 sm:p-6">
-                <StatGrid className="md:grid-cols-4 lg:grid-cols-4">
-                  <Stat label="Total tokens" value="1.4B" hint="last 21 days" />
-                  <Stat label="Estimated cost" value="$412" hint="API list prices" />
-                  <Stat label="Current streak" value="12 days" hint="consecutive days" />
-                  <Stat label="Best day" value="Oct 19" hint="118M tokens" />
-                </StatGrid>
-                <Card>
-                  <CardHeader><CardTitle className="text-sm font-medium">Output tokens per day</CardTitle></CardHeader>
-                  <CardContent><UsageChart rows={example.rows} since={example.since} metric="output" colorOf={colorOf} /></CardContent>
-                </Card>
-              </div>
-            </Card>
-          </div>
+          <HeroDashboard rows={example.rows} since={example.since} colorOf={colorOf} handle={shown} />
           <div className="grid gap-4">
             <p className="text-center text-xs font-medium tracking-widest text-subtle uppercase">Works with the tools you already use</p>
             <div className="marquee overflow-hidden">
@@ -575,6 +554,69 @@ function ProfilePreview({ profile }: { profile: PublicProfile }) {
             Token counts come from each tool's own records and aren't comparable across tools in every detail.
             {profile.shows.costs && ' Costs are API list-price estimates unless billed by the provider; not what a subscription costs.'}
           </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The dashboard's Overview as it really looks (top bar, stat cards, daily chart), built from the same components
+ * and fed example data, so the hero always matches the app.
+ */
+function HeroDashboard({ rows, since, colorOf, handle }: { rows: Row[]; since: string; colorOf: (k: string) => number; handle: string }) {
+  const [range, setRange] = useState<'7' | '30'>('30');
+  const [metric, setMetric] = useState<Metric>('output');
+  const from = range === '7' ? new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10) : since;
+  const shown = rows.filter((r) => r.day! >= from);
+  const total = (f: (r: Row) => number) => shown.reduce((a, r) => a + f(r), 0);
+  const runs = streakRuns(rows, since);
+  const current = runs[runs.length - 1].value;
+  return (
+    <div className="overflow-hidden rounded-xl border bg-background shadow-xl shadow-black/5">
+      <div className="flex items-center gap-2 border-b bg-card px-4 py-2.5">
+        <span className="size-2.5 rounded-full bg-border" />
+        <span className="size-2.5 rounded-full bg-border" />
+        <span className="size-2.5 rounded-full bg-border" />
+        <span className="ml-3 truncate font-mono text-xs text-subtle">{window.location.host}/dashboard</span>
+        <Badge variant="secondary" className="ml-auto font-normal">Example data</Badge>
+      </div>
+      <div className="flex text-left">
+        {/* Content */}
+        <div className="min-w-0 flex-1 bg-background">
+          <div className="flex h-12 items-center gap-2 border-b px-4 text-sm">
+            <span className="hidden text-muted-foreground sm:inline">Dashboard</span>
+            <ChevronRight className="hidden size-3.5 text-subtle sm:block" />
+            <span className="font-medium">Overview</span>
+            <span className="ml-auto inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs text-muted-foreground">
+              <span className="size-1.5 rounded-full" style={{ background: 'var(--series-3)' }} />Synced 4 min ago
+            </span>
+          </div>
+          <div className="grid gap-4 p-4 sm:p-5">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div className="grid gap-0.5">
+                <span className="text-xl font-semibold tracking-tight">Overview</span>
+                <span className="text-xs text-muted-foreground">Your AI coding usage · last {range} days · UTC</span>
+              </div>
+              <Pills label="Range" items={[['7', '7 days'], ['30', '30 days']]} value={range} onChange={setRange} />
+            </div>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <KpiCard label="Total tokens" value={compact(total(rowTokens))} hint="Across 3 tools" points={perDay(shown, from, rowTokens)} color="var(--series-2)" format={(v) => `${fmt(v)} tokens`} />
+              <KpiCard label="Estimated cost" value={usd(total((r) => r.cost_usd ?? 0))} hint="API list prices, not a bill" points={perDay(shown, from, (r) => r.cost_usd ?? 0)} color="var(--series-3)" format={usd} />
+              <KpiCard label="Requests" value={compact(total((r) => r.events))} hint="412 sessions" points={perDay(shown, from, (r) => r.events)} color="var(--series-1)" format={(v) => `${fmt(v)} requests`} />
+              <KpiCard label="Current streak" value={plural(current, 'day')} hint={`Longest ${plural(Math.max(...runs.map((p) => p.value)), 'day')}`} points={runs.filter((p, i) => daysFrom(since)[i] >= from)} color="var(--series-4)" format={(v) => (v ? `Day ${v} of a streak` : 'No usage')} />
+            </div>
+            <Card>
+              <CardHeader className="flex flex-wrap items-start justify-between gap-3">
+                <div className="grid gap-1">
+                  <CardTitle className="text-sm">{metric === 'output' ? 'Output tokens' : 'Requests'} per day</CardTitle>
+                  <span className="text-xs text-muted-foreground">Stacked by model</span>
+                </div>
+                <Pills<Metric> label="Metric" items={[['output', 'Output'], ['requests', 'Requests']]} value={metric} onChange={setMetric} />
+              </CardHeader>
+              <CardContent><UsageChart rows={shown} since={from} metric={metric} colorOf={colorOf} height={200} /></CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     </div>
