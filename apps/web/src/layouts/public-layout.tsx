@@ -23,10 +23,10 @@ export function PublicLayout() {
   return (
     <div className="flex min-h-svh flex-col">
       <header className="sticky top-0 z-20 border-b bg-background/80 backdrop-blur">
-        <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between px-4 sm:px-6">
+        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-5 sm:px-8">
           <Wordmark to={user ? '/dashboard' : '/'} />
           {pathname === '/' && (
-            <nav className="hidden items-center gap-6 text-sm text-muted-foreground md:flex">
+            <nav className="hidden items-center gap-8 text-sm text-muted-foreground md:flex">
               {[['#profile', 'Profile'], ['#features', 'Features'], ['#how', 'How it works'], ['#privacy', 'Privacy'], ['#faq', 'FAQ']].map(([href, label]) => (
                 <a key={href} href={href} className="transition-colors hover:text-foreground">{label}</a>
               ))}
@@ -46,7 +46,7 @@ export function PublicLayout() {
         <Outlet />
       </main>
       <footer className="border-t">
-        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 py-5 sm:px-6">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-5 py-8 sm:px-8">
           <Link to={user ? '/dashboard' : '/'} className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
             <LogoMark className="size-4" />
             tokenburn

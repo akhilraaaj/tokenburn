@@ -165,6 +165,12 @@
   .marquee-track { animation: marquee 40s linear infinite; }
   @keyframes marquee { to { transform: translateX(-50%); } }
   @media (prefers-reduced-motion: reduce) { .marquee-track { animation: none; } }
+  /* Landing page: a dot travelling along the privacy flow's connectors (sideways on wide screens, down on phones). */
+  .flow-dot { animation: flow-y 2.4s ease-in-out infinite; }
+  @media (min-width: 48rem) { .flow-dot { animation-name: flow-x; } }
+  @keyframes flow-y { from { top: 0; opacity: 0; } 20%, 80% { opacity: 1; } to { top: calc(100% - 6px); opacity: 0; } }
+  @keyframes flow-x { from { left: 0; opacity: 0; } 20%, 80% { opacity: 1; } to { left: calc(100% - 6px); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .flow-dot { animation: none; display: none; } }
 
   /* Landing hero: each piece rises in, staggered with an inline animation-delay. */
   .hero-in { animation: hero-in 0.9s cubic-bezier(0.16, 1, 0.3, 1) both; }

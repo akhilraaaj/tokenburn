@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  ArrowDown, ArrowRight, AtSign, BarChart3, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight, CloudUpload, Coins, Flame, Globe, Laptop, Layers, Lock, RefreshCw, Terminal,
+  ArrowDown, ArrowRight, AtSign, BarChart3, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight, Coins, Flame, Globe, Laptop, Layers, Lock, RefreshCw, Terminal,
 } from 'lucide-react';
 import { GitHubMark, LogoMark, ToolMark, TOOL_MARKS } from '@/components/brand';
 import { CopyCommand } from '@/components/copy-command';
@@ -215,7 +215,6 @@ export function Landing() {
   const [handle, setHandle] = useState('');
   const shown = user?.username ?? (handle || 'you');
   const [shows, setShows] = useState(DEFAULT_SHOWS);
-  const [step, setStep] = useState(0);
   const profile = useMemo(() => exampleProfile(shown, shows), [shown, shows]);
 
   // Sign-in failures land here as ?error=… — toast once, then drop the param so refresh doesn't re-fire.
@@ -235,7 +234,7 @@ export function Landing() {
   return (
     <div className="relative overflow-x-clip">
 
-      <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-16 px-4 pt-16 pb-24 sm:px-6 sm:pt-24">
+      <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-20 px-5 pt-16 pb-24 sm:gap-24 sm:px-8 sm:pt-20 lg:gap-28 lg:pt-24">
         <Dialog open={deleted} onOpenChange={(open) => { if (!open) navigate('/', { replace: true }); }}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
@@ -255,60 +254,57 @@ export function Landing() {
           </DialogContent>
         </Dialog>
 
-        {/* Hero */}
-        <section className="grid grid-cols-1 justify-items-center gap-7 text-center animate-in fade-in slide-in-from-bottom-3 duration-700">
-          <span className="inline-flex items-center gap-2.5 rounded-full border bg-card py-1 pr-3.5 pl-1 text-xs text-muted-foreground shadow-xs">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-[color-mix(in_oklab,var(--series-2)_12%,transparent)] px-2 py-0.5 font-medium text-[var(--series-2)]">
-              <span className="relative flex size-1.5">
-                <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--series-2)] opacity-60" />
-                <span className="relative inline-flex size-1.5 rounded-full bg-[var(--series-2)]" />
+        {/* Hero + product preview, kept close so the dashboard shows on the first screen */}
+        <div className="grid grid-cols-1 gap-10 sm:gap-12">
+          <section className="grid grid-cols-1 justify-items-center gap-6 text-center animate-in fade-in slide-in-from-bottom-3 duration-700">
+            <span className="inline-flex items-center gap-2.5 rounded-full border bg-card py-1 pr-3.5 pl-1 text-xs text-muted-foreground shadow-xs">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[color-mix(in_oklab,var(--series-2)_12%,transparent)] px-2 py-0.5 font-medium text-[var(--series-2)]">
+                <span className="relative flex size-1.5">
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--series-2)] opacity-60" />
+                  <span className="relative inline-flex size-1.5 rounded-full bg-[var(--series-2)]" />
+                </span>
+                Local-first
               </span>
-              Local-first
+              Private by default
             </span>
-            Private by default
-          </span>
-          <h1 className="max-w-4xl text-4xl font-semibold text-balance sm:text-6xl">
-            <ToolHeadline />
-          </h1>
-          <p className="max-w-xl text-base text-pretty text-muted-foreground sm:text-lg">
-            See how you really build with AI. Every model, token and streak across your tools, on one dashboard and
-            one <span className="font-medium text-foreground">@profile</span> worth sharing.
-          </p>
-          <HandleClaim handle={handle} onChange={setHandle} />
-          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-sm text-subtle">
-            <span className="inline-flex items-center gap-1.5"><Check className="size-3.5 text-brand" />Claude Code, Codex, Gemini + more</span>
-            <span className="inline-flex items-center gap-1.5"><Check className="size-3.5 text-brand" />Setup in a minute</span>
-            <span className="inline-flex items-center gap-1.5"><Check className="size-3.5 text-brand" />Your code never leaves</span>
-          </div>
-        </section>
+            <h1 className="max-w-3xl text-[2.1rem] leading-[1.12] font-semibold tracking-tight text-balance sm:text-5xl sm:leading-[1.1] lg:text-[3.5rem]">
+              <ToolHeadline />
+            </h1>
+            <p className="max-w-xl text-[0.95rem] leading-relaxed text-pretty text-muted-foreground sm:text-base">
+              See how you really build with AI. Every model, token and streak across your tools, on one dashboard and
+              one <span className="font-medium text-foreground">@profile</span> worth sharing.
+            </p>
+            <div className="grid w-full justify-items-center pt-1"><HandleClaim handle={handle} onChange={setHandle} /></div>
+          </section>
 
-        {/* Product preview + tools */}
-        <section className="grid grid-cols-1 gap-8 animate-in fade-in slide-in-from-bottom-6 duration-1000">
-          <HeroDashboard rows={example.rows} since={example.since} colorOf={colorOf} handle={shown} />
-          <div className="grid gap-4">
-            <p className="text-center text-xs font-medium tracking-widest text-subtle uppercase">Works with the tools you already use</p>
-            <div className="marquee overflow-hidden">
-              <div className="marquee-track flex w-max items-center py-2">
-                {[...TOOL_LOGOS, ...TOOL_LOGOS].map((t, i) => (
-                  <span key={i} aria-hidden={i >= TOOL_LOGOS.length} className="flex flex-none items-center px-6 text-muted-foreground/80 transition-colors hover:text-foreground sm:px-8">
-                    <ToolLogoMark logo={t} className="[--logo-h:1.25rem] sm:[--logo-h:1.5rem]" />
-                  </span>
-                ))}
+          {/* Product preview + tools */}
+          <section className="grid grid-cols-1 gap-16 animate-in fade-in slide-in-from-bottom-6 sm:gap-20 duration-1000">
+            <HeroDashboard rows={example.rows} since={example.since} colorOf={colorOf} handle={shown} />
+            <div className="grid gap-6">
+              <p className="text-center text-xs font-medium tracking-widest text-subtle uppercase">Works with the tools you already use</p>
+              <div className="marquee overflow-hidden">
+                <div className="marquee-track flex w-max items-center py-2">
+                  {[...TOOL_LOGOS, ...TOOL_LOGOS].map((t, i) => (
+                    <span key={i} aria-hidden={i >= TOOL_LOGOS.length} className="flex flex-none items-center px-6 text-muted-foreground/80 transition-colors hover:text-foreground sm:px-8">
+                      <ToolLogoMark logo={t} className="[--logo-h:1.25rem] sm:[--logo-h:1.5rem]" />
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+        </div>
 
         {/* Profile */}
-        <section id="profile" className="grid scroll-mt-20 grid-cols-1 gap-10">
+        <section id="profile" className="grid scroll-mt-24 grid-cols-1 gap-10 sm:gap-12">
           <SectionHeading
             label="Your profile"
             icon={AtSign}
             title="One link that shows how you build with AI"
             sub="Your GitHub has your commits. Your tokenburn profile has the rest: the models you lean on, how much you ship with them, and how long the streak has lasted. Flip a switch and watch it change."
           />
-          <div className="grid items-start gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
-            <div className="grid gap-4">
+          <div className="grid items-start gap-6 lg:grid-cols-[18rem_minmax(0,1fr)] lg:gap-8">
+            <div className="grid gap-6">
               <ProfileControls shows={shows} onChange={(k, v) => setShows({ ...shows, [k]: v })} />
               <div className="hidden lg:grid"><ProfileCta /></div>
             </div>
@@ -318,16 +314,16 @@ export function Landing() {
         </section>
 
         {/* Features */}
-        <section id="features" className="grid scroll-mt-20 grid-cols-1 gap-10">
+        <section id="features" className="grid scroll-mt-24 grid-cols-1 gap-10 sm:gap-12">
           <SectionHeading
             label="Features"
             icon={BarChart3}
             title="Everything you'd want to know, nothing you wouldn't share"
             sub="One place for every AI coding tool, built for developers who live in the terminal."
           />
-          <div className="grid gap-4 md:grid-cols-6">
+          <div className="grid gap-5 md:grid-cols-6 lg:gap-6">
             <Tile className="md:col-span-4" icon={BarChart3} title="Activity at a glance" body="Tokens, requests and cost per day, by model, with your best day called out.">
-              <div className="grid gap-2">
+              <div className="grid gap-3">
                 <div className="flex gap-1 text-[0.7rem]">
                   {['Tokens', 'Requests', 'Cost'].map((l, i) => (
                     <span key={l} className={cn('rounded-md px-2 py-0.5', i === 0 ? 'bg-surface-2 text-foreground' : 'text-subtle')}>{l}</span>
@@ -343,7 +339,7 @@ export function Landing() {
               <MiniContributions />
             </Tile>
             <Tile className="md:col-span-3" icon={Layers} title="Every model, side by side" body="Rank by tokens, requests or cost, and open any model for its own trend.">
-              <div className="grid gap-2.5">
+              <div className="grid gap-3.5">
                 {MIX.slice(0, 3).map((m) => (
                   <div key={m.name} className="grid gap-1">
                     <div className="flex items-center justify-between text-xs">
@@ -364,109 +360,70 @@ export function Landing() {
         </section>
 
         {/* How it works */}
-        <section id="how" className="grid scroll-mt-20 grid-cols-1 gap-10">
+        <section id="how" className="grid scroll-mt-24 grid-cols-1 gap-10 sm:gap-12">
           <SectionHeading label="How it works" icon={Terminal} title="Up and running in a minute" sub="Three steps, then it takes care of itself. Pick a step to watch it run in the terminal." />
-          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-            <ol className="relative grid gap-2">
-              {/* The rail connecting the step numbers fills in up to the selected step. */}
-              <span aria-hidden className="absolute top-9 bottom-9 left-[2.2rem] w-px bg-border" />
-              <span
-                aria-hidden
-                className="absolute top-9 left-[2.2rem] w-px bg-brand transition-[height] duration-300"
-                style={{ height: `calc((100% - 4.5rem) * ${step / (STEPS.length - 1)})` }}
-              />
-              {STEPS.map((st, i) => (
-                <li key={st.title}>
-                  <button
-                    type="button"
-                    onClick={() => setStep(i)}
-                    aria-pressed={step === i}
-                    className={cn(
-                      'relative flex w-full gap-4 rounded-xl border p-5 text-left transition-colors',
-                      step === i ? 'border-border bg-card shadow-sm' : 'border-transparent hover:bg-card/50',
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        'num z-[1] flex size-8 flex-none items-center justify-center rounded-full border text-sm font-medium transition-colors',
-                        step === i ? 'border-brand bg-brand text-primary-foreground'
-                          : i < step ? 'border-brand/50 bg-background text-brand' : 'bg-background text-muted-foreground',
-                      )}
-                    >
-                      {i + 1}
-                    </span>
-                    <span className="grid min-w-0 gap-1.5">
-                      <span className={cn('font-medium', step !== i && 'text-muted-foreground')}>{st.title}</span>
-                      <span className="text-sm text-muted-foreground">{st.body}</span>
-                      <code className={cn('w-fit truncate rounded-md px-2 py-0.5 font-mono text-xs', step === i ? 'bg-brand/10 text-brand' : 'bg-surface-2 text-subtle')}>$ {st.command}</code>
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ol>
-            <TerminalDemo handle={shown} step={step} />
-          </div>
+          <HowItWorks handle={shown} />
         </section>
 
         {/* Privacy */}
-        <section id="privacy" className="grid scroll-mt-20 grid-cols-1 gap-10">
+        <section id="privacy" className="grid scroll-mt-24 grid-cols-1 gap-10 sm:gap-12">
           <SectionHeading
             label="Privacy"
             icon={Lock}
             title="Your code stays on your machine"
             sub="tokenburn only ever sees totals. Here's where your data goes, step by step."
           />
-          <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr_auto_1fr] md:items-stretch">
-            <FlowCard
-              icon={Laptop} color="var(--series-other)" step="1 · On your machine" title="Stays local" local
-              body="Read by the CLI, never uploaded."
-              items={['Prompts and responses', 'Source code and file paths', 'Project and machine names', 'API keys and credentials']}
-            />
-            <FlowArrow />
-            <FlowCard
-              icon={CloudUpload} color="var(--series-1)" step="2 · Synced" title="Only totals"
-              body="Numbers, nothing you wrote."
-              items={['Tokens per model, per day', 'Request counts', 'Hashed session ids', 'Cursor and OpenRouter rows']}
-            />
-            <FlowArrow />
-            <FlowCard
-              icon={Globe} color="var(--series-3)" step="3 · On your profile" title="Only what you allow"
-              body="Private until you publish."
-              items={['Each field has its own switch', 'Preview it before going public', 'Turn it off anytime', 'Delete everything in Settings']}
-            />
+          {/* Three lists in the app's card style: what stays local, what syncs, what a profile can show. */}
+          <div className="grid gap-5 md:grid-cols-3 lg:gap-6">
+            <PrivacyList icon={Laptop} title="Never leaves your machine" local items={NEVER_UPLOADED} />
+            <PrivacyList icon={RefreshCw} title="Synced: only totals" items={SYNCED} />
+            <PrivacyList icon={Globe} title="On your profile: your call" items={PROFILE_CONTROLS} />
           </div>
-          <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-sm text-muted-foreground">
-            <Lock className="size-3.5 text-subtle" />
+          <p className="flex items-center justify-center gap-2 text-center text-xs text-muted-foreground">
+            <Lock className="size-3.5 flex-none text-subtle" />
             Setup shows the exact upload and asks before the first one.
           </p>
         </section>
 
         {/* FAQ */}
-        <section id="faq" className="grid scroll-mt-20 grid-cols-1 gap-10">
+        <section id="faq" className="grid scroll-mt-24 grid-cols-1 gap-10 sm:gap-12">
           <SectionHeading title="Questions, answered" />
-          <div className="mx-auto grid w-full max-w-3xl divide-y rounded-xl border bg-card">
+          <div className="mx-auto grid w-full max-w-3xl divide-y rounded-2xl border bg-card">
             {FAQ.map((f) => (
-              <details key={f.q} className="group px-5 py-4 [&_summary::-webkit-details-marker]:hidden">
+              <details key={f.q} className="group px-6 py-5 sm:px-7 [&_summary::-webkit-details-marker]:hidden">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-medium">
                   {f.q}
                   <ChevronDown className="size-4 flex-none text-subtle transition-transform group-open:rotate-180" />
                 </summary>
-                <p className="pt-2 text-sm text-pretty text-muted-foreground">{f.a}</p>
+                <p className="pt-3 pr-8 text-sm leading-relaxed text-pretty text-muted-foreground">{f.a}</p>
               </details>
             ))}
           </div>
         </section>
 
-        {/* Final CTA */}
-        <section className="grid justify-items-center gap-4 rounded-2xl border bg-card px-6 py-14 text-center sm:py-16">
-          <LogoMark className="size-8" />
-          <h2 className="max-w-2xl text-3xl font-semibold text-balance sm:text-4xl">
-            Your <span className="text-brand">@{shown}</span> is waiting.
-          </h2>
-          <p className="max-w-md text-muted-foreground">It takes a minute, and your code stays yours.</p>
-          <div className="flex flex-wrap justify-center gap-3 pt-2">
-            <ProfileCta />
+        {/* Final CTA: the hero's claim field and install command again, under the tools they bring together. */}
+        <section className="relative isolate grid justify-items-center gap-7 overflow-hidden rounded-3xl border bg-card px-6 py-14 text-center sm:py-16">
+          {/* Faint grid lines along the top edge, fading out before the copy. */}
+          <svg aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-56 w-full text-border opacity-60 [mask-image:linear-gradient(to_bottom,black,transparent)]">
+            <defs>
+              <pattern id="cta-grid" width="28" height="28" patternUnits="userSpaceOnUse" x="50%">
+                <path d="M28 0H0V28" fill="none" stroke="currentColor" strokeWidth="1" />
+              </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#cta-grid)" />
+          </svg>
+          <ToolStack />
+          <div className="grid justify-items-center gap-3">
+            <h2 className="max-w-2xl text-2xl font-semibold tracking-tight text-balance sm:text-4xl">
+              You've burned millions of tokens.
+              <span className="block text-muted-foreground">Got anything to show for it?</span>
+            </h2>
+            <p className="max-w-lg text-[0.95rem] text-pretty text-muted-foreground">
+              Claim your handle and turn every session in Claude Code, Codex, Cursor and Gemini into streaks, stats and a
+              profile worth sharing.
+            </p>
           </div>
+          <HandleClaim id="handle-cta" handle={handle} onChange={setHandle} />
         </section>
       </div>
     </div>
@@ -545,6 +502,26 @@ function HeadlineIcon({ active }: { active: number }) {
   );
 }
 
+/** Every tool's tile in an overlapping stack. The tiles spread out on hover. */
+function ToolStack() {
+  return (
+    <div aria-hidden className="group flex">
+      {HEADLINE_TOOLS.map((tool, i) => (
+        <span
+          key={tool}
+          className={cn(
+            'flex size-8 items-center justify-center rounded-lg shadow-md shadow-black/10 ring-[3px] ring-card transition-[margin] duration-300 sm:size-9',
+            TOOL_TILES[tool],
+            i > 0 && '-ml-1.5 group-hover:ml-1.5',
+          )}
+        >
+          <ToolMark tool={tool} className="size-4 sm:size-4.5" />
+        </span>
+      ))}
+    </div>
+  );
+}
+
 /** Primary call to action, depending on whether someone is signed in and has a username yet. */
 function ProfileCta() {
   const { user } = useSession();
@@ -554,11 +531,11 @@ function ProfileCta() {
 }
 
 /** "yourhost/@handle" field: typing previews the handle across the page; claiming goes through sign-in. */
-function HandleClaim({ handle, onChange }: { handle: string; onChange: (h: string) => void }) {
+function HandleClaim({ id = 'handle', handle, onChange }: { id?: string; handle: string; onChange: (h: string) => void }) {
   const { user } = useSession();
   if (user) {
     return (
-      <div className="grid w-full max-w-xl grid-cols-1 gap-2.5">
+      <div className="grid w-full max-w-xl grid-cols-1 gap-4">
         {/* Same shape as the claim field below, with the signed-in actions in place of the input. */}
         <div className="flex overflow-hidden rounded-xl border bg-card shadow-xs">
           <span className="flex shrink-0 items-center border-r bg-surface-2 px-3 font-mono text-sm text-muted-foreground">
@@ -576,23 +553,24 @@ function HandleClaim({ handle, onChange }: { handle: string; onChange: (h: strin
             <Button asChild size="sm" className="h-8 px-3"><Link to="/dashboard">Dashboard <ArrowRight /></Link></Button>
           </div>
         </div>
-        <CopyCommand command={INSTALL} className="w-full text-left" />
+        <OrDivider />
+        <CopyCommand command={INSTALL} className="w-full py-2 text-left" />
       </div>
     );
   }
   const host = window.location.host;
   return (
-    <div className="grid w-full max-w-xl grid-cols-1 gap-2.5">
+    <div className="grid w-full max-w-xl grid-cols-1 gap-4">
       <form
         action="/login"
         className="flex overflow-hidden rounded-xl border bg-card shadow-xs transition-shadow focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/40"
       >
-        <label htmlFor="handle" className="flex min-w-0 flex-1 items-stretch">
+        <label htmlFor={id} className="flex min-w-0 flex-1 items-stretch">
           <span className="flex shrink-0 items-center border-r bg-surface-2 px-3 font-mono text-sm text-muted-foreground">
             <span className="hidden sm:inline">{host}/</span>@
           </span>
           <input
-            id="handle"
+            id={id}
             name="handle"
             value={handle}
             onChange={(e) => onChange(cleanHandle(e.target.value))}
@@ -607,7 +585,19 @@ function HandleClaim({ handle, onChange }: { handle: string; onChange: (h: strin
           <Button type="submit" size="sm" className="h-8 px-3">Claim <ArrowRight /></Button>
         </div>
       </form>
-      <CopyCommand command={INSTALL} className="w-full text-left" />
+      <OrDivider />
+      <CopyCommand command={INSTALL} className="w-full py-2 text-left" />
+    </div>
+  );
+}
+
+/** A hairline with a small label, between the claim field and the install command. */
+function OrDivider() {
+  return (
+    <div aria-hidden className="flex items-center gap-3 font-mono text-[0.7rem] text-subtle font-medium">
+      <span className="h-px flex-1 bg-border" />
+      or install the CLI
+      <span className="h-px flex-1 bg-border" />
     </div>
   );
 }
@@ -684,15 +674,14 @@ function HeroDashboard({ rows, since, colorOf, handle }: { rows: Row[]; since: s
       <div className="flex items-center gap-2 border-b bg-card px-4 py-2.5">
         <WindowDots />
         <span className="ml-3 truncate font-mono text-xs text-subtle">{window.location.host}/dashboard</span>
-        <Badge variant="secondary" className="ml-auto font-normal">Example data</Badge>
       </div>
       <div className="flex text-left">
         {/* Content */}
         <div className="min-w-0 flex-1 bg-background">
           <div className="flex h-12 items-center gap-2 border-b px-4 text-sm">
-            <span className="hidden text-muted-foreground sm:inline">Dashboard</span>
+            <span className="hidden text-muted-foreground sm:inline font-medium">Dashboard</span>
             <ChevronRight className="hidden size-3.5 text-subtle sm:block" />
-            <span className="font-medium">Overview</span>
+            <span className="font-semibold">Overview</span>
             <span className="ml-auto inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs text-muted-foreground font-medium">
               <span className="size-1.5 rounded-full" style={{ background: 'var(--series-3)' }} />Synced 4 min ago
             </span>
@@ -701,7 +690,7 @@ function HeroDashboard({ rows, since, colorOf, handle }: { rows: Row[]; since: s
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div className="grid gap-0.5">
                 <span className="text-xl font-semibold">Overview</span>
-                <span className="text-xs text-muted-foreground">Your AI coding usage · last {range} days · UTC</span>
+                <span className="text-xs text-muted-foreground font-medium">Your AI coding usage · last {range} days · UTC</span>
               </div>
               <Pills label="Range" items={[['7', '7 days'], ['30', '30 days']]} value={range} onChange={setRange} />
             </div>
@@ -724,6 +713,61 @@ function HeroDashboard({ rows, since, colorOf, handle }: { rows: Row[]; since: s
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The setup steps as a vertical stepper beside the terminal demo. Finished steps get a check, and the line below
+ * the current step fills as its terminal output types out.
+ */
+function HowItWorks({ handle }: { handle: string }) {
+  const [step, setStep] = useState(0);
+  const [progress, setProgress] = useState(0);
+  return (
+    <div className="grid items-stretch gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:gap-12">
+      <ol className="grid lg:grid-rows-3">
+        {STEPS.map((st, i) => {
+          const state = i < step ? 'done' : i === step ? 'active' : 'next';
+          const fill = state === 'done' ? 1 : state === 'active' ? progress : 0;
+          return (
+            <li key={st.title} className="grid">
+              <button type="button" onClick={() => setStep(i)} aria-current={state === 'active' ? 'step' : undefined} className="group flex gap-5 text-left">
+                <span className="flex flex-col items-center">
+                  <span
+                    className={cn(
+                      'num flex size-9 flex-none items-center justify-center rounded-full border font-mono text-xs transition-all duration-300',
+                      state === 'done' && 'border-brand bg-brand text-primary-foreground',
+                      state === 'active' && 'border-brand bg-background text-brand ring-4 ring-brand/15',
+                      state === 'next' && 'bg-card text-subtle group-hover:border-foreground/30 group-hover:text-foreground',
+                    )}
+                  >
+                    {state === 'done' ? <Check className="size-4" /> : `0${i + 1}`}
+                  </span>
+                  {i < STEPS.length - 1 && (
+                    <span className="relative my-2 min-h-8 w-px flex-1 bg-border">
+                      <span className="absolute inset-x-0 top-0 bg-brand" style={{ height: `${fill * 100}%` }} />
+                    </span>
+                  )}
+                </span>
+                <span className={cn('grid min-w-0 content-start gap-2 pt-1.5', i < STEPS.length - 1 && 'pb-8')}>
+                  <span className={cn('font-medium transition-colors', state !== 'active' && 'text-muted-foreground group-hover:text-foreground')}>{st.title}</span>
+                  <span className="text-sm text-muted-foreground">{st.body}</span>
+                  <code
+                    className={cn(
+                      'w-fit max-w-full truncate rounded-md border px-2 py-0.5 font-mono text-xs transition-colors',
+                      state === 'active' ? 'border-brand/30 bg-brand/10 text-brand' : 'border-transparent bg-surface-2 text-subtle',
+                    )}
+                  >
+                    $ {st.command}
+                  </code>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+      <TerminalDemo handle={handle} step={step} onProgress={setProgress} onAdvance={() => setStep((n) => (n + 1) % STEPS.length)} />
     </div>
   );
 }
@@ -832,7 +876,12 @@ const prefersReducedMotion = () => typeof window !== 'undefined' && window.match
  * The real CLI output for each step, typed out once the terminal scrolls into view: commands character by
  * character, output line by line. Reduced-motion users get the finished screen.
  */
-function TerminalDemo({ handle, step }: { handle: string; step: number }) {
+function TerminalDemo({ handle, step, onProgress, onAdvance }: {
+  handle: string;
+  step: number;
+  onProgress: (fraction: number) => void;
+  onAdvance: () => void;
+}) {
   const lines = useMemo(() => terminalScripts(handle, window.location.host), [handle]);
   const script = lines[step];
   // Timeline: a command costs one tick per character plus a pause; an output line costs a few ticks.
@@ -877,6 +926,16 @@ function TerminalDemo({ handle, step }: { handle: string; step: number }) {
   }, [tick]);
 
   const done = tick >= total;
+  useEffect(() => onProgress(total ? Math.min(1, tick / total) : 1), [tick, total, onProgress]);
+  // Once a step has played out, hold the finished screen for a moment, then move on to the next step.
+  const advance = useRef(onAdvance);
+  advance.current = onAdvance;
+  useEffect(() => {
+    if (!visible || !done || prefersReducedMotion()) return;
+    const id = setTimeout(() => advance.current(), 3200);
+    return () => clearTimeout(id);
+  }, [visible, done, step, run]);
+
   return (
     <div ref={wrap} className="overflow-hidden rounded-xl border border-[var(--term-line)] bg-[var(--term-bg)] text-[var(--term-text)] shadow-lg">
       <div className="flex items-center gap-2 border-b border-[var(--term-line)] bg-[var(--term-bar)] px-4 py-2.5">
@@ -924,49 +983,26 @@ function TerminalDemo({ handle, step }: { handle: string; step: number }) {
 
 const Caret = () => <span className="inline-block h-3.5 w-[7px] translate-y-0.5 animate-pulse bg-[var(--term-text)]/80" />;
 
-/** One stage of the data flow in the privacy section, tinted with its stage color. */
-function FlowCard({ icon: Icon, color, step, title, body, items, local = false }: {
-  icon: typeof Lock;
-  color: string;
-  step: string;
-  title: string;
-  body: string;
-  items: string[];
-  local?: boolean;
-}) {
-  return (
-    <div className="grid content-start gap-4 rounded-xl border bg-card p-5">
-      <div className="grid gap-3">
-        <span
-          className="flex size-10 items-center justify-center rounded-xl"
-          style={{ background: `color-mix(in oklab, ${color} 16%, transparent)`, color }}
-        >
-          <Icon className="size-5" />
-        </span>
-        <div className="grid gap-0.5">
-          <span className="text-xs text-subtle">{step}</span>
-          <span className="text-lg font-semibold">{title}</span>
-          <span className="text-sm text-muted-foreground">{body}</span>
-        </div>
-      </div>
-      <ul className="grid gap-2 border-t pt-4 text-sm">
-        {items.map((x) => (
-          <li key={x} className={cn('flex items-center gap-2', local && 'text-muted-foreground')}>
-            {local ? <Lock className="size-3.5 flex-none text-subtle" /> : <Check className="size-3.5 flex-none" style={{ color }} />}
-            {x}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
+const NEVER_UPLOADED = ['Prompts and responses', 'Source code and file paths', 'Project and machine names', 'API keys and credentials'];
+const SYNCED = ['Tokens per model, per day', 'Request counts', 'Hashed session ids', 'Cursor and OpenRouter rows'];
+const PROFILE_CONTROLS = ['Private until you publish', 'A switch for every field', 'Preview before going public', 'Delete everything in Settings'];
 
-function FlowArrow() {
+/** A titled list in the app's card style, one row per item. */
+function PrivacyList({ icon: Icon, title, items, local = false }: { icon: typeof Lock; title: string; items: string[]; local?: boolean }) {
   return (
-    <div aria-hidden className="flex items-center justify-center text-subtle">
-      <ArrowRight className="hidden size-4 md:block" />
-      <ArrowDown className="size-4 md:hidden" />
-    </div>
+    <Card className="gap-3">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-sm"><Icon className="size-4 text-subtle" />{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="grid">
+        {items.map((x) => (
+          <span key={x} className={cn('flex items-center justify-between gap-4 border-t py-2.5 text-sm', local && 'text-muted-foreground')}>
+            {x}
+            {local ? <Lock className="size-3.5 flex-none text-subtle" /> : <Check className="size-3.5 flex-none text-brand" />}
+          </span>
+        ))}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -980,23 +1016,23 @@ function SectionLabel({ icon: Icon, children }: { icon: typeof Lock; children: R
 
 function SectionHeading({ label, icon, title, sub }: { label?: string; icon?: typeof Lock; title: string; sub?: string }) {
   return (
-    <div className="grid justify-items-center gap-3 text-center">
+    <div className="grid justify-items-center gap-4 text-center">
       {label && icon && <SectionLabel icon={icon}>{label}</SectionLabel>}
-      <h2 className="max-w-2xl text-3xl font-semibold text-balance sm:text-4xl">{title}</h2>
-      {sub && <p className="max-w-2xl text-pretty text-muted-foreground">{sub}</p>}
+      <h2 className="max-w-2xl text-2xl leading-tight font-semibold tracking-tight text-balance sm:text-4xl">{title}</h2>
+      {sub && <p className="max-w-2xl text-[0.95rem] leading-relaxed text-pretty text-muted-foreground">{sub}</p>}
     </div>
   );
 }
 
 function Tile({ icon: Icon, title, body, className, children }: { icon: typeof Lock; title: string; body: string; className?: string; children?: ReactNode }) {
   return (
-    <div className={cn('group grid content-between gap-4 rounded-xl border bg-card p-6 transition-all hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-lg hover:shadow-black/5', className)}>
-      <div className="grid gap-2">
-        <span className="flex size-9 items-center justify-center rounded-lg border bg-surface-2/60 transition-colors group-hover:border-brand/40">
+    <div className={cn('group grid content-between gap-6 rounded-2xl border bg-card p-6 transition-all sm:p-8 hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-lg hover:shadow-black/5', className)}>
+      <div className="grid gap-2.5">
+        <span className="flex size-10 items-center justify-center rounded-lg border bg-surface-2/60 transition-colors group-hover:border-brand/40">
           <Icon className="size-4.5 text-brand" />
         </span>
-        <h3 className="font-medium">{title}</h3>
-        <p className="text-sm text-muted-foreground">{body}</p>
+        <h3 className="pt-1.5 font-medium">{title}</h3>
+        <p className="text-sm leading-relaxed text-muted-foreground">{body}</p>
       </div>
       {children}
     </div>
