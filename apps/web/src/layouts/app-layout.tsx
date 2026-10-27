@@ -27,8 +27,17 @@ interface DashboardState {
   reload: () => void;
 }
 
-const DashboardContext = createContext<DashboardState | null>(null);
-export const useDashboard = () => useContext(DashboardContext)!;
+// Default (not null) so Vite HMR / brief unmounts don't crash on `const { reload } = useDashboard()`.
+const DashboardContext = createContext<DashboardState>({
+  data: null,
+  error: null,
+  days: '30',
+  setDays: () => {},
+  reload: () => {},
+});
+
+/** Shared dashboard data for routes under AppLayout. */
+export const useDashboard = () => useContext(DashboardContext);
 
 const NAV = [
   { to: '/dashboard', label: 'Overview', icon: LayoutDashboard, end: true },
@@ -75,9 +84,24 @@ export function AppLayout() {
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
   const setDays = useCallback((d: Range) => setParams((p) => { p.set('days', d); return p; }, { replace: true }), [setParams]);
+  // Provider must wrap every return (including loading / redirect). Early returns without it make
+  // child routes briefly call useDashboard() on null and crash: "Cannot destructure property 'reload'".
+  const dashboard: DashboardState = { data, error, days, setDays, reload };
 
-  if (loading) return <div className="p-6"><Skeleton className="h-8 w-48" /></div>;
-  if (!user) return <Navigate to="/" replace />;
+  if (loading) {
+    return (
+      <DashboardContext.Provider value={dashboard}>
+        <div className="p-6"><Skeleton className="h-8 w-48" /></div>
+      </DashboardContext.Provider>
+    );
+  }
+  if (!user) {
+    return (
+      <DashboardContext.Provider value={dashboard}>
+        <Navigate to="/" replace />
+      </DashboardContext.Provider>
+    );
+  }
 
   const keep = (to: string) => (days !== '30' ? `${to}?days=${days}` : to);
   const initials = (user.username ?? user.github_login).slice(0, 2).toUpperCase();
@@ -87,7 +111,7 @@ export function AppLayout() {
   const stale = !lastSync || Date.now() - Date.parse(lastSync) > 2 * 864e5;
 
   return (
-    <DashboardContext.Provider value={{ data, error, days, setDays, reload }}>
+    <DashboardContext.Provider value={dashboard}>
       <SidebarProvider>
         <CloseMobileSidebarOnNavigate />
         <Sidebar collapsible="icon" variant="inset">

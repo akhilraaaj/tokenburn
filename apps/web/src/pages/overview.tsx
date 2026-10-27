@@ -70,7 +70,7 @@ export function Overview() {
         />
         <KpiCard
           label="Requests" value={compact(hl.events)} title={fmt(hl.events)}
-          hint={plural(Object.values(data.sessions).reduce((a, b) => a + b, 0), 'session')}
+          hint="Across all tools"
           points={perDay(data.rows, data.since, (r) => r.events)} color="var(--series-1)" format={(v) => `${fmt(v)} requests`}
         />
         <KpiCard
@@ -104,7 +104,7 @@ export function Overview() {
       </Card>
       {providers.length > 0 ? (
         <div className="grid gap-4 lg:grid-cols-2">
-          {providers.map((p) => <ToolCard key={p} provider={p} rows={data.rows.filter((r) => r.provider === p)} sessions={data.sessions[p]} />)}
+          {providers.map((p) => <ToolCard key={p} provider={p} rows={data.rows.filter((r) => r.provider === p)} />)}
         </div>
       ) : (
         <p className="text-sm text-subtle">No usage in this range.</p>

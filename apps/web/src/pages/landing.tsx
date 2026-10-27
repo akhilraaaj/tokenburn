@@ -50,7 +50,6 @@ const SHOW_FIELDS = [
   ['show_models', 'Models'],
   ['show_token_totals', 'Token totals'],
   ['show_daily_trend', 'Daily trend'],
-  ['show_sessions', 'Session count'],
   ['show_streaks', 'Streaks & best day'],
   ['show_costs', 'Estimated cost'],
 ] as const;
@@ -58,13 +57,13 @@ type ShowKey = (typeof SHOW_FIELDS)[number][0];
 type Shows = Record<ShowKey, boolean>;
 const DEFAULT_SHOWS: Shows = {
   show_github: true, show_providers: true, show_models: true, show_token_totals: true,
-  show_daily_trend: true, show_sessions: false, show_streaks: true, show_costs: false,
+  show_daily_trend: true, show_streaks: true, show_costs: false,
 };
 
 const FAQ = [
   { q: 'Are my prompts or code uploaded?', a: 'No. The CLI reads usage records on your machine and uploads daily totals per model, request counts and hashed session ids. Prompts, responses, code, file paths, project names and keys stay on your computer.' },
   { q: 'Is my profile public?', a: 'Not until you say so. Your profile is private by default; publish it from Settings or with tokenburn profile public, and pick exactly which fields it shows.' },
-  { q: "What's on a public profile?", a: 'Only what you switch on: your tools, models, token totals, a daily chart, streaks, a contribution graph, session counts and estimated cost. Each one has its own switch, and the preview above uses the same ones.' },
+  { q: "What's on a public profile?", a: 'Only what you switch on: your tools, models, token totals, a daily chart, streaks, a contribution graph and estimated cost. Each one has its own switch, and the preview above uses the same ones.' },
   { q: 'How is cost estimated?', a: "The provider's billed amount where reported (OpenRouter), otherwise the tool's own estimate, otherwise public API list prices. It is not what a subscription costs, and it's always labeled as an estimate." },
   { q: 'Does something keep running in the background?', a: 'No. Your OS runs a quick sync every 30 minutes and nothing stays running in between.' },
   { q: 'Can I delete everything?', a: 'Yes. Deleting your account in Settings removes your profile and all uploaded usage. tokenburn forget clears the local data on each machine.' },
@@ -157,10 +156,6 @@ function exampleProfile(handle: string, f: Shows): PublicProfile {
       groups.set(k, g);
     }
     out.breakdown = [...groups.values()];
-  }
-  if (f.show_sessions) {
-    const counts = { claude_code: 412, codex: 96, gemini_cli: 31 };
-    out.sessions = f.show_providers ? counts : { all: Object.values(counts).reduce((a, b) => a + b, 0) };
   }
   if (shows.tokens || shows.costs || shows.streaks) {
     const perDay = new Map<string, number>();
@@ -713,7 +708,7 @@ function HeroDashboard({ rows, since, colorOf, handle }: { rows: Row[]; since: s
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <KpiCard label="Total tokens" value={compact(total(rowTokens))} hint="Across 3 tools" points={perDay(shown, from, rowTokens)} color="var(--series-2)" format={(v) => `${fmt(v)} tokens`} />
               <KpiCard label="Estimated cost" value={usd(total((r) => r.cost_usd ?? 0))} hint="API list prices, not a bill" points={perDay(shown, from, (r) => r.cost_usd ?? 0)} color="var(--series-3)" format={usd} />
-              <KpiCard label="Requests" value={compact(total((r) => r.events))} hint="412 sessions" points={perDay(shown, from, (r) => r.events)} color="var(--series-1)" format={(v) => `${fmt(v)} requests`} />
+              <KpiCard label="Requests" value={compact(total((r) => r.events))} hint="Across all tools" points={perDay(shown, from, (r) => r.events)} color="var(--series-1)" format={(v) => `${fmt(v)} requests`} />
               <KpiCard label="Current streak" value={plural(current, 'day')} hint={`Longest ${plural(Math.max(...runs.map((p) => p.value)), 'day')}`} points={runs.filter((p, i) => daysFrom(since)[i] >= from)} color="var(--series-4)" format={(v) => (v ? `Day ${v} of a streak` : 'No usage')} />
             </div>
             <Card>
@@ -801,7 +796,7 @@ function terminalScripts(handle: string, host: string): TermLine[][] {
         ),
       },
       { out: ask('Upload this to your account?', '(y/N)', 'y') },
-      { out: ok('Synced 64 daily totals · 412 sessions') },
+      { out: ok('Synced 64 daily totals') },
       { out: stepTitle(5, 'Automatic sync'), gap: true },
       { out: ask('Turn on automatic sync?', '(Y/n)', '') },
       { out: ok('Automatic sync on: every 30 minutes') },

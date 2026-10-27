@@ -1,5 +1,6 @@
 import { AlertTriangle, Laptop } from 'lucide-react';
 import { CopyCommand } from '@/components/copy-command';
+import { ProviderChip, providerFromSource } from '@/components/tool-logos';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useDashboard } from '@/layouts/app-layout';
@@ -19,7 +20,9 @@ export function Machines() {
         <div className={cn('grid gap-4', data.devices.length > 1 && 'md:grid-cols-2')}>
           {data.devices.map((d) => {
             const stale = !d.last_sync_at || Date.now() - Date.parse(d.last_sync_at) > 2 * 864e5;
-            const found = [...new Set(Object.keys(d.health?.sources ?? {}).map((s) => sourceDef(s)?.label.split(' ')[0] ?? s))];
+            const found = [...new Set(
+              Object.keys(d.health?.sources ?? {}).map((s) => providerFromSource(s) ?? sourceDef(s)?.label ?? s),
+            )];
             return (
               <Card key={d.id} className="gap-4">
                 <CardHeader className="flex items-start gap-3">
@@ -38,7 +41,9 @@ export function Machines() {
                 <CardContent className="grid gap-2 border-t pt-4">
                   <span className="text-xs text-subtle">Sources found</span>
                   <div className="flex flex-wrap gap-1.5">
-                    {found.length ? found.map((f) => <Badge key={f} variant="secondary" className="font-normal">{f}</Badge>) : <span className="text-sm text-subtle">None yet</span>}
+                    {found.length
+                      ? found.map((f) => <ProviderChip key={f} provider={f} />)
+                      : <span className="text-sm text-subtle">None yet</span>}
                   </div>
                 </CardContent>
               </Card>

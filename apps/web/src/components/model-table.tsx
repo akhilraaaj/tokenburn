@@ -1,3 +1,4 @@
+import { ToolMark } from '@/components/tool-logos';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { compact, fmt, usd } from '@/lib/format.ts';
@@ -67,7 +68,14 @@ export function ModelTable({ rows, colorOf, tokens, costs, billing = false }: {
                   </div>
                 </div>
               </TableCell>
-              {withTool && <TableCell className="text-muted-foreground">{providerLabel(g.provider)}</TableCell>}
+              {withTool && (
+                <TableCell>
+                  <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                    <ToolMark provider={g.provider} className="size-3.5 text-foreground/80" />
+                    {providerLabel(g.provider)}
+                  </span>
+                </TableCell>
+              )}
               <TableCell className="num text-right">{fmt(g.events)}</TableCell>
               {tokens && TOKEN_FIELDS.map(([f]) => (
                 <TableCell key={f} className={cn('num text-right', g[f] === null && 'text-subtle')}>{fmt(g[f])}</TableCell>
@@ -81,7 +89,7 @@ export function ModelTable({ rows, colorOf, tokens, costs, billing = false }: {
               {billing && (
                 <TableCell>
                   <div className="flex flex-wrap gap-1">
-                    {[...g.billing].map((b) => <Badge key={b} variant="secondary" className="font-normal">{b.replace('_', ' ')}</Badge>)}
+                    {[...g.billing].map((b) => <Badge key={b} variant="secondary" className="font-medium text-xs">{b.replace('_', ' ')}</Badge>)}
                   </div>
                 </TableCell>
               )}

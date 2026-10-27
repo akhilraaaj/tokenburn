@@ -1,3 +1,4 @@
+import { PROVIDER_LABELS, PROVIDERS, type Provider } from '../../../../packages/shared/src/index.ts';
 import { cn } from '@/lib/utils';
 
 /**
@@ -83,3 +84,52 @@ export function ToolLogoMark({ logo, className }: { logo: ToolLogo; className?: 
     </span>
   );
 }
+
+/** Logo keyed by provider id (matches `PROVIDER_LABELS` names). */
+export const TOOL_LOGO_BY_PROVIDER: Partial<Record<Provider, ToolLogo>> = Object.fromEntries(
+  TOOL_LOGOS.flatMap((logo) => {
+    const id = (Object.entries(PROVIDER_LABELS) as [Provider, string][]).find(([, label]) => label === logo.name)?.[0];
+    return id ? [[id, logo] as const] : [];
+  }),
+);
+
+/** usage_source keys share a provider prefix (`claude_code_jsonl` → `claude_code`). */
+export function providerFromSource(source: string): Provider | undefined {
+  return PROVIDERS.find((p) => source === p || source.startsWith(`${p}_`));
+}
+
+/**
+ * Compact mark-only icon for pills and badges. Always sits in a fixed square so every tool reads the
+ * same size; the SVG meets the box (no stretch). Falls back to nothing when unknown.
+ */
+export function ToolMark({ provider, className }: { provider?: string | null; className?: string }) {
+  const logo = provider ? TOOL_LOGO_BY_PROVIDER[provider as Provider] : undefined;
+  if (!logo?.mark) return null;
+  return (
+    <span className={cn('inline-grid size-3.5 shrink-0 place-items-center', className)} aria-hidden="true">
+      <svg
+        viewBox={`0 0 ${logo.mark.w} 24`}
+        fill="currentColor"
+        fillRule="evenodd"
+        preserveAspectRatio="xMidYMid meet"
+        className="size-full"
+      >
+        {logo.mark.paths.map((p, i) => <path key={i} d={p.d} fillOpacity={p.o} />)}
+      </svg>
+    </span>
+  );
+}
+
+/** Shared chip for a tool: fixed-height mark + label, used on profiles and Machines. */
+export function ProviderChip({ provider, className }: { provider: string; className?: string }) {
+  return (
+    <span className={cn(
+      'inline-flex h-6 items-center gap-1.5 rounded-full border border-border/80 bg-background px-2 text-xs',
+      className,
+    )}>
+      <ToolMark provider={provider} className="size-3.5 text-foreground/80" />
+      <span className="font-medium text-foreground/90">{PROVIDER_LABELS[provider as Provider] ?? provider}</span>
+    </span>
+  );
+}
+

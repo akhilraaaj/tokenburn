@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { CalendarDays, Check, LayoutDashboard, Link2, MessagesSquare, Pencil } from 'lucide-react';
+import { CalendarDays, Check, LayoutDashboard, Link2, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { CONTRIBUTION_DAYS, type PublicProfile } from '../../../../packages/shared/src/index.ts';
 import { GitHubMark, Wordmark } from '@/components/brand';
@@ -11,8 +11,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { api, ApiError } from '@/lib/api.ts';
-import { dayLabel, plural } from '@/lib/format.ts';
-import { colorMap, providerLabel, rowTokens } from '@/lib/series.ts';
+import { dayLabel } from '@/lib/format.ts';
+import { ProviderChip } from '@/components/tool-logos';
+import { colorMap, rowTokens } from '@/lib/series.ts';
 import { cn } from '@/lib/utils';
 import { useSession } from '@/session';
 import { NotFound } from './not-found';
@@ -204,8 +205,7 @@ export function ProfileView({ profile, preview = false }: { profile: PublicProfi
   const providers = [...new Set(breakdown.map((b) => b.provider).filter(Boolean))] as string[];
   const h = profile.highlights ?? {};
   const metric = profile.shows.tokens ? 'output' : 'requests';
-  const sessions = profile.sessions ?? {};
-  const empty = !profile.daily && !breakdown.length && !Object.keys(sessions).length && !Object.keys(h).length;
+  const empty = !profile.daily && !breakdown.length && !Object.keys(h).length;
   const name = profile.display_name || profile.username;
   const start = chartStart(profile.since, profile.first_day ?? null);
   const hasTrend = !!profile.daily && !!profile.first_day;
@@ -233,9 +233,9 @@ export function ProfileView({ profile, preview = false }: { profile: PublicProfi
           <AvatarFallback className="rounded-full text-base">{name.slice(0, 2).toUpperCase()}</AvatarFallback>
         </Avatar>
         <div className="grid min-w-0 flex-1 gap-2">
-          <div className="grid gap-0.5">
+          <div className="grid gap-1">
             <h1 className="truncate text-lg font-semibold leading-tight sm:text-xl">{name}</h1>
-            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[13px] text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[13px] text-muted-foreground font-medium">
               <span>@{profile.username}</span>
               {profile.github && (
                 <>
@@ -247,20 +247,14 @@ export function ProfileView({ profile, preview = false }: { profile: PublicProfi
               )}
             </div>
           </div>
-          {(profile.first_day || sessions.all !== undefined || providers.length > 0) && (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-subtle">
+          {(profile.first_day || providers.length > 0) && (
+            <div className="flex flex-wrap items-center gap-1.5 text-xs text-subtle">
               {profile.first_day && (
-                <span className="inline-flex items-center gap-1"><CalendarDays className="size-3" />Since {dayLabel(profile.first_day)}</span>
-              )}
-              {sessions.all !== undefined && (
-                <span className="inline-flex items-center gap-1"><MessagesSquare className="size-3" />{plural(sessions.all, 'session')}</span>
-              )}
-              {providers.map((p) => (
-                <span key={p} className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-muted-foreground">
-                  {providerLabel(p)}
-                  {sessions[p] !== undefined && <span className="num text-subtle">{sessions[p]}</span>}
+                <span className="inline-flex h-6 items-center gap-1.5 rounded-full bg-background border border-border/80 font-medium text-foreground/90 px-2">
+                  <CalendarDays className="size-3.5" />Since {dayLabel(profile.first_day)}
                 </span>
-              ))}
+              )}
+              {providers.map((p) => <ProviderChip key={p} provider={p} />)}
             </div>
           )}
         </div>

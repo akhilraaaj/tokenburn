@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { DailyRow, Highlights } from '../../../../packages/shared/src/index.ts';
+import { ToolMark } from '@/components/tool-logos';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { compact, dayLabel, fmt, plural, usd } from '@/lib/format.ts';
@@ -39,7 +40,6 @@ export function HighlightStats({ h, tokens, costs, streaks, windowLabel, extra =
   costs: boolean;
   streaks: boolean;
   windowLabel: string;
-  /** More cards for the same grid (the public profile's session counts). */
   extra?: ReactNode[];
 }) {
   const items: ReactNode[] = [];
@@ -65,7 +65,7 @@ export function HighlightStats({ h, tokens, costs, streaks, windowLabel, extra =
 }
 
 /** Per-tool summary. Metrics a tool can't report show "n/a", distinct from zero. */
-export function ToolCard({ provider, rows, sessions }: { provider: string; rows: DailyRow[]; sessions?: number }) {
+export function ToolCard({ provider, rows }: { provider: string; rows: DailyRow[] }) {
   const src = sourceDef(rows[0]?.usage_source);
   const sum = (f: keyof DailyRow) => rows.reduce<number | null>((a, r) => (r[f] === null ? a : (a ?? 0) + (r[f] as number)), null);
   const metrics: [string, number | null, string?][] = [
@@ -74,7 +74,6 @@ export function ToolCard({ provider, rows, sessions }: { provider: string; rows:
     ['Cache read', sum('cache_read_tokens')],
     ['Cache write', sum('cache_write_tokens')],
     ['Requests', sum('events')],
-    ['Sessions', src?.sessions ? sessions ?? 0 : null],
   ];
   const incomplete = rows.reduce((n, r) => n + r.incomplete_events, 0);
   const billed = sum('billed_cost_usd');
@@ -82,7 +81,10 @@ export function ToolCard({ provider, rows, sessions }: { provider: string; rows:
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-2">
-          <span>{providerLabel(provider)}</span>
+          <span className="inline-flex items-center gap-2">
+            <ToolMark provider={provider} className="size-4 text-foreground/80" />
+            {providerLabel(provider)}
+          </span>
           <Badge variant="outline" className="font-normal text-muted-foreground">{src?.label}</Badge>
         </CardTitle>
       </CardHeader>
