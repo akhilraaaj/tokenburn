@@ -17,8 +17,8 @@ export function PageHeading({ title, description, action }: { title: string; des
   return (
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div className="grid gap-1">
-        <h2 className="text-2xl font-semibold tracking-tight">{title}</h2>
-        {description && <p className="text-sm text-muted-foreground">{description}</p>}
+        <h2 className="text-2xl font-semibold">{title}</h2>
+        {description && <p className="text-sm text-muted-foreground font-medium">{description}</p>}
       </div>
       {action}
     </div>
@@ -138,8 +138,8 @@ export function KpiCard({ label, value, title, hint, points, color, format }: {
     <Card className="gap-3 pb-0">
       <CardHeader className="gap-1">
         <CardDescription>{label}</CardDescription>
-        <CardTitle className="num text-xl font-semibold tracking-tight sm:text-2xl" title={title}>{value}</CardTitle>
-        <span className="truncate text-xs text-subtle">{hint}</span>
+        <CardTitle className="num text-xl font-semibold sm:text-2xl" title={title}>{value}</CardTitle>
+        <span className="truncate text-xs text-subtle font-medium">{hint}</span>
       </CardHeader>
       <CardContent className="mt-auto px-0">
         <AreaChart height={48} points={points} color={color} format={format} />

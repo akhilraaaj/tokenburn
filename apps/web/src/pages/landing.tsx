@@ -258,7 +258,7 @@ export function Landing() {
             </span>
             Local-first · Private by default
           </Badge>
-          <h1 className="max-w-4xl text-4xl font-semibold tracking-tighter text-balance sm:text-6xl md:text-7xl">
+          <h1 className="max-w-4xl text-4xl font-semibold text-balance sm:text-6xl">
             Every token you burn, in one place.
           </h1>
           <p className="max-w-2xl text-base text-pretty text-muted-foreground sm:text-lg">
@@ -452,7 +452,7 @@ export function Landing() {
         {/* Final CTA */}
         <section className="grid justify-items-center gap-4 rounded-2xl border bg-card px-6 py-14 text-center sm:py-16">
           <LogoMark className="size-8" />
-          <h2 className="max-w-2xl text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
+          <h2 className="max-w-2xl text-3xl font-semibold text-balance sm:text-4xl">
             Your <span className="text-brand">@{shown}</span> is waiting.
           </h2>
           <p className="max-w-md text-muted-foreground">It takes a minute, and your code stays yours.</p>
@@ -599,7 +599,7 @@ function HeroDashboard({ rows, since, colorOf, handle }: { rows: Row[]; since: s
           <div className="grid gap-4 p-4 sm:p-5">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div className="grid gap-0.5">
-                <span className="text-xl font-semibold tracking-tight">Overview</span>
+                <span className="text-xl font-semibold">Overview</span>
                 <span className="text-xs text-muted-foreground">Your AI coding usage · last {range} days · UTC</span>
               </div>
               <Pills label="Range" items={[['7', '7 days'], ['30', '30 days']]} value={range} onChange={setRange} />
@@ -846,7 +846,7 @@ function FlowCard({ icon: Icon, color, step, title, body, items, local = false }
         </span>
         <div className="grid gap-0.5">
           <span className="text-xs text-subtle">{step}</span>
-          <span className="text-lg font-semibold tracking-tight">{title}</span>
+          <span className="text-lg font-semibold">{title}</span>
           <span className="text-sm text-muted-foreground">{body}</span>
         </div>
       </div>
@@ -883,7 +883,7 @@ function SectionHeading({ label, icon, title, sub }: { label?: string; icon?: ty
   return (
     <div className="grid justify-items-center gap-3 text-center">
       {label && icon && <SectionLabel icon={icon}>{label}</SectionLabel>}
-      <h2 className="max-w-2xl text-3xl font-semibold tracking-tight text-balance sm:text-4xl">{title}</h2>
+      <h2 className="max-w-2xl text-3xl font-semibold text-balance sm:text-4xl">{title}</h2>
       {sub && <p className="max-w-2xl text-pretty text-muted-foreground">{sub}</p>}
     </div>
   );

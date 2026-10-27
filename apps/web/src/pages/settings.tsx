@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ExternalLink } from 'lucide-react';
+import { Check, ExternalLink, Loader2 } from 'lucide-react';
 import { PROVIDER_LABELS, type ProfileSettings, type WebDevice, type WebUser } from '../../../../packages/shared/src/index.ts';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
@@ -17,9 +17,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { api, ApiError } from '@/lib/api.ts';
 import { timeAgo } from '@/lib/format.ts';
+import { cn } from '@/lib/utils';
 import { useDashboard } from '@/layouts/app-layout';
 import { useSession } from '@/session';
 import { PageHeading } from './overview';
+
+type Availability = { state: 'idle' | 'checking' | 'ok' | 'bad'; reason?: string };
 
 const FLAGS: [keyof ProfileSettings, string, string][] = [
   ['show_github', 'GitHub account', 'Your GitHub avatar and a link to your GitHub profile'],
@@ -46,6 +49,8 @@ export function Settings() {
   const [provider, setProvider] = useState('all');
   const [confirm, setConfirm] = useState('');
   const [saving, setSaving] = useState(false);
+  const [savingUsername, setSavingUsername] = useState(false);
+  const [availability, setAvailability] = useState<Availability>({ state: 'idle' });
 
   const load = async () => {
     const d = await api<SettingsData>('GET', '/api/web/settings');
@@ -55,18 +60,45 @@ export function Settings() {
   };
   useEffect(() => { void load(); }, []);
 
+  const savedUsername = data?.user.username ?? null;
+  const draft = username.trim().toLowerCase();
+  const unchanged = draft === (savedUsername ?? '');
+
+  // Debounced availability check; your own saved name counts as available.
+  useEffect(() => {
+    if (!draft || unchanged) {
+      setAvailability({ state: 'idle' });
+      return;
+    }
+    setAvailability({ state: 'checking' });
+    let live = true;
+    const t = setTimeout(() => {
+      api<{ available: boolean; reason?: string }>('GET', `/api/web/username-available?name=${encodeURIComponent(draft)}`)
+        .then((r) => live && setAvailability(r.available ? { state: 'ok' } : { state: 'bad', reason: r.reason }))
+        .catch(() => live && setAvailability({ state: 'idle' }));
+    }, 300);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [draft, unchanged]);
+
   if (!data || !profile) return <div className="grid gap-4"><Skeleton className="h-32 rounded-xl" /><Skeleton className="h-96 rounded-xl" /></div>;
 
   const flag = (k: keyof ProfileSettings) => !!profile[k];
   const set = (k: keyof ProfileSettings, v: boolean) => setProfile({ ...profile, [k]: v });
   const host = new URL(data.origin).host;
+  const canSaveUsername = !!draft && !unchanged && availability.state === 'ok' && !savingUsername;
 
-  const saveUsername = async () => {
+  const saveUsername = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canSaveUsername) return;
+    setSavingUsername(true);
     try {
-      const r = await api<{ username: string }>('PUT', '/api/web/username', { username });
+      const r = await api<{ username: string }>('PUT', '/api/web/username', { username: draft });
       await Promise.all([refresh(), load()]);
       toast.success(`Username set to @${r.username}`);
-    } catch (e) { toast.error(errorText(e)); }
+    } catch (err) { toast.error(errorText(err)); } finally { setSavingUsername(false); }
   };
 
   const saveProfile = async () => {
@@ -86,16 +118,51 @@ export function Settings() {
       <Card>
         <CardHeader>
           <CardTitle>Username</CardTitle>
-          <CardDescription>Your public profile lives at {host}/@{data.user.username ?? 'username'}.</CardDescription>
+          <CardDescription>Your public profile URL. Letters, digits, _ or -, 3–30 characters.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex max-w-md items-center gap-2">
-            <div className="flex flex-1 items-center rounded-md border bg-background pl-3 text-sm focus-within:ring-2 focus-within:ring-ring/50">
-              <span className="text-subtle">{host}/@</span>
-              <Input value={username} onChange={(e) => setUsername(e.target.value)} className="border-0 pl-0.5 shadow-none focus-visible:ring-0" aria-label="Username" />
+          <form onSubmit={saveUsername} className="grid max-w-lg grid-cols-1 gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="flex h-9 min-w-0 flex-1 overflow-hidden rounded-lg border bg-background shadow-xs transition-shadow focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50">
+                <span className="flex h-full shrink-0 items-center border-r bg-surface-2 px-3 font-mono text-sm text-muted-foreground">
+                  <span className="hidden sm:inline">{host}/</span>@
+                </span>
+                <Input
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 30))}
+                  maxLength={30}
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder="yourname"
+                  aria-label="Username"
+                  className="h-full min-w-0 rounded-none border-0 bg-transparent px-2.5 font-mono shadow-none focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent"
+                />
+                <span className="flex items-center pr-2.5 text-subtle">
+                  {availability.state === 'checking' && <Loader2 className="size-3.5 animate-spin" />}
+                  {availability.state === 'ok' && <Check className="size-3.5" style={{ color: 'var(--series-3)' }} />}
+                </span>
+              </div>
+              <Button type="submit" disabled={!canSaveUsername} className="sm:w-auto">
+                {savingUsername ? 'Saving…' : savedUsername ? 'Change' : 'Claim'}
+              </Button>
             </div>
-            <Button variant="outline" onClick={saveUsername} disabled={!username || username === data.user.username}>Save</Button>
-          </div>
+            <p className={cn(
+              'min-h-4 text-xs',
+              availability.state === 'bad' ? 'text-destructive'
+                : availability.state === 'ok' ? 'text-foreground'
+                  : 'text-muted-foreground',
+            )}>
+              {availability.state === 'bad' && (availability.reason ?? 'Not available')}
+              {availability.state === 'ok' && 'Available'}
+              {availability.state === 'checking' && 'Checking…'}
+              {availability.state === 'idle' && unchanged && savedUsername && (
+                <Link to={`/@${savedUsername}`} className="inline-flex items-center gap-1 hover:text-foreground">
+                  {host}/@{savedUsername}<ExternalLink className="size-3" />
+                </Link>
+              )}
+              {availability.state === 'idle' && !savedUsername && 'Pick a handle to claim your profile.'}
+            </p>
+          </form>
         </CardContent>
       </Card>
 

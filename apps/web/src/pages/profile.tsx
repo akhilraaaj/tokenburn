@@ -178,7 +178,7 @@ function ProfileBody({ handle }: { handle: string }) {
     const own = user?.username === handle;
     return own ? (
       <div className="mx-auto grid max-w-md justify-items-center gap-3 px-4 py-24 text-center">
-        <h1 className="text-2xl font-semibold tracking-tight">Your profile is private</h1>
+        <h1 className="text-2xl font-semibold">Your profile is private</h1>
         <p className="text-muted-foreground">Turn it on in Settings, and choose what it shows.</p>
         <Button asChild variant="outline"><Link to="/dashboard/settings">Open settings</Link></Button>
       </div>
@@ -239,7 +239,7 @@ export function ProfileView({ profile, preview = false }: { profile: PublicProfi
         </Avatar>
         <div className="grid min-w-0 flex-1 gap-2">
           <div className="grid gap-0.5">
-            <h1 className="truncate text-lg font-semibold leading-tight tracking-tight sm:text-xl">{name}</h1>
+            <h1 className="truncate text-lg font-semibold leading-tight sm:text-xl">{name}</h1>
             <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[13px] text-muted-foreground">
               <span>@{profile.username}</span>
               {profile.github && (

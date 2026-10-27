@@ -95,10 +95,10 @@ export function AppLayout() {
               <SidebarMenuItem>
                 <SidebarMenuButton asChild size="lg" className="hover:bg-transparent active:bg-transparent">
                   <Link to="/dashboard">
-                    <div className="flex size-8 items-center justify-center rounded-lg border bg-background shadow-xs"><LogoMark className="size-4" /></div>
-                    <div className="grid leading-tight group-data-[collapsible=icon]:hidden">
-                      <span className="font-semibold tracking-tight">tokenburn</span>
-                      <span className="text-xs text-subtle">Dashboard</span>
+                    <div className="flex size-8 items-center justify-center rounded-md border bg-background shadow-xs"><LogoMark className="size-4" /></div>
+                    <div className="grid leading-tight group-data-[collapsible=icon]:hidden gap-0.5">
+                      <span className="font-semibold">tokenburn</span>
+                      <span className="text-xs text-subtle font-medium">Dashboard</span>
                     </div>
                   </Link>
                 </SidebarMenuButton>
@@ -109,14 +109,14 @@ export function AppLayout() {
             <SidebarGroup>
               <SidebarGroupLabel>Usage</SidebarGroupLabel>
               <SidebarGroupContent>
-                <SidebarMenu className="gap-0.5">
+                <SidebarMenu className="gap-1">
                   {NAV.map((n) => (
                     <SidebarMenuItem key={n.to}>
                       <NavLink to={keep(n.to)} end={n.end}>
                         {({ isActive }) => (
                           <SidebarMenuButton isActive={isActive} tooltip={n.label} className="h-9 data-[active=true]:shadow-xs">
                             <n.icon />
-                            <span>{n.label}</span>
+                            <span className="font-medium tracking-normal">{n.label}</span>
                           </SidebarMenuButton>
                         )}
                       </NavLink>
@@ -128,24 +128,16 @@ export function AppLayout() {
             <SidebarGroup>
               <SidebarGroupLabel>Account</SidebarGroupLabel>
               <SidebarGroupContent>
-                <SidebarMenu className="gap-0.5">
+                <SidebarMenu className="gap-1">
                   <SidebarMenuItem>
                     <NavLink to="/dashboard/settings">
                       {({ isActive }) => (
                         <SidebarMenuButton isActive={isActive} tooltip="Settings" className="h-9 data-[active=true]:shadow-xs">
-                          <Settings /><span>Settings</span>
+                          <Settings /><span className="font-medium tracking-normal">Settings</span>
                         </SidebarMenuButton>
                       )}
                     </NavLink>
                   </SidebarMenuItem>
-                  {/* Collapsed to icons, the profile card below is hidden; this keeps the profile one click away. */}
-                  {user.username && (
-                    <SidebarMenuItem className="hidden group-data-[collapsible=icon]:block">
-                      <SidebarMenuButton asChild tooltip="Public profile">
-                        <Link to={`/@${user.username}`}><Globe /><span>Public profile</span></Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  )}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
@@ -157,14 +149,14 @@ export function AppLayout() {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <SidebarMenuButton size="lg" className="data-[state=open]:bg-sidebar-accent">
-                      <Avatar className="size-8 rounded-lg border">
+                      <Avatar className="size-8 rounded-full border">
                         {/* The public avatar; it only exists while the profile is public and shows GitHub, else initials. */}
-                        {user.username && <AvatarImage src={`/api/avatar/${user.username}`} alt="" className="rounded-lg" />}
-                        <AvatarFallback className="rounded-lg text-xs">{initials}</AvatarFallback>
+                        {user.username && <AvatarImage src={`/api/avatar/${user.username}`} alt="" className="rounded-full" />}
+                        <AvatarFallback className="rounded-full text-xs">{initials}</AvatarFallback>
                       </Avatar>
-                      <div className="grid flex-1 text-left text-sm leading-tight">
-                        <span className="truncate font-medium">{user.username ? `@${user.username}` : user.github_login}</span>
-                        <span className="truncate text-xs text-subtle">GitHub · {user.github_login}</span>
+                      <div className="grid flex-1 text-left text-sm gap-0.5">
+                        <span className="truncate font-semibold">{user.username ? `@${user.username}` : user.github_login}</span>
+                        <span className="truncate text-xs text-subtle font-medium">GitHub · {user.github_login}</span>
                       </div>
                       <ChevronsUpDown className="ml-auto size-4 text-subtle" />
                     </SidebarMenuButton>
@@ -186,9 +178,9 @@ export function AppLayout() {
           <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 rounded-t-xl border-b bg-background/80 px-4 backdrop-blur sm:px-6">
             <SidebarTrigger className="-ml-1.5" />
             <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
-              <Link to="/dashboard" className="hidden text-muted-foreground hover:text-foreground sm:inline">Dashboard</Link>
+              <Link to="/dashboard" className="hidden font-medium text-muted-foreground hover:text-foreground sm:inline">Dashboard</Link>
               <ChevronRight className="hidden size-3.5 text-subtle sm:block" />
-              <h1 className="truncate font-medium">{TITLES[pathname] ?? 'Dashboard'}</h1>
+              <span className="truncate font-semibold">{TITLES[pathname] ?? 'Dashboard'}</span>
             </nav>
             {data && data.devices.length > 0 && (
               <span className="ml-auto inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs text-muted-foreground" title={lastSync ?? ''}>
@@ -208,37 +200,38 @@ export function AppLayout() {
   );
 }
 
-/** Public-profile status in the sidebar: where it lives, whether it's live, and the next useful action. */
+/**
+ * Profile live/private status — same chip language as the header sync pill (dot + quiet label), as a
+ * real sidebar row so icon-collapse still works via tooltip.
+ */
 function ProfileStatus({ username, isPublic }: { username: string | null; isPublic: boolean | null }) {
   if (isPublic === null) return null;
   const live = isPublic && !!username;
-  const color = live ? 'var(--series-3)' : 'var(--series-other)';
-  const action = live ? { to: `/@${username}`, label: 'View profile' } : { to: '/dashboard/settings', label: username ? 'Make it public' : 'Pick a username' };
+  const href = live ? `/@${username}` : '/dashboard/settings';
+  const tip = live ? `Public · @${username}` : username ? 'Private profile' : 'Choose a username';
+
   return (
-    <div className="mx-2 mt-auto mb-1 overflow-hidden rounded-xl border bg-background shadow-xs group-data-[collapsible=icon]:hidden">
-      <div className="flex items-center gap-2.5 p-3">
-        <span className="flex size-8 flex-none items-center justify-center rounded-lg" style={{ background: `color-mix(in oklab, ${color} 16%, transparent)`, color }}>
-          <Globe className="size-4" />
-        </span>
-        <div className="grid min-w-0 flex-1 leading-tight">
-          <span className="text-xs font-medium">Public profile</span>
-          <span className="truncate font-mono text-[0.7rem] text-subtle">{username ? `/@${username}` : 'No username yet'}</span>
-        </div>
-        <span
-          className="inline-flex flex-none items-center gap-1 rounded-full px-1.5 py-0.5 text-[0.65rem] font-medium"
-          style={{ background: `color-mix(in oklab, ${color} 14%, transparent)`, color: live ? color : 'var(--tb-text-2)' }}
-        >
-          <span className="size-1.5 rounded-full" style={{ background: color }} />
-          {live ? 'Live' : 'Private'}
-        </span>
-      </div>
-      <Link
-        to={action.to}
-        className="flex items-center justify-between border-t px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-      >
-        {action.label}
-        <ArrowUpRight className="size-3.5" />
-      </Link>
-    </div>
+    <SidebarGroup className="mt-auto px-2 pb-1 group-data-[collapsible=icon]:px-0">
+      <SidebarGroupContent>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              asChild
+              tooltip={tip}
+              className="h-8 rounded-md border border-sidebar-border bg-sidebar-accent px-2.5 text-xs text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-accent group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:rounded-full! group-data-[collapsible=icon]:border-sidebar-border group-data-[collapsible=icon]:p-0!"
+            >
+              <Link to={href}>
+                <span className="size-1.5 flex-none rounded-full" style={{ background: live ? 'var(--series-3)' : 'var(--series-other)' }} />
+                <span className="truncate font-medium text-sidebar-foreground max-w-30">{username ? `@${username}` : 'Your profile'}</span>
+                <span className="ml-auto flex items-center gap-1 text-[0.7rem] text-sidebar-foreground/55">
+                  {live ? 'Live' : username ? 'Private' : 'Setup'}
+                  {live && <ArrowUpRight className="size-3" />}
+                </span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
   );
 }

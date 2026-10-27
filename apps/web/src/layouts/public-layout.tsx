@@ -30,7 +30,7 @@ export function PublicLayout() {
             </nav>
           )}
           {!loading && (user ? (
-            <Button asChild size="sm" variant="outline"><Link to="/dashboard">Dashboard</Link></Button>
+            <Button asChild size="sm"><Link to="/dashboard">Dashboard</Link></Button>
           ) : (
             <Button asChild size="sm"><a href="/login">Sign in with GitHub</a></Button>
           ))}

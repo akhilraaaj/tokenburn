@@ -255,7 +255,7 @@ export function TrendCard({ label, value, action, footer, children }: {
       <CardHeader className="flex flex-wrap items-start justify-between gap-3">
         <div className="grid gap-1">
           <CardDescription>{label}</CardDescription>
-          <CardTitle className="num text-3xl font-normal tracking-tight">{value}</CardTitle>
+          <CardTitle className="num text-3xl font-normal">{value}</CardTitle>
         </div>
         {action}
       </CardHeader>
@@ -475,7 +475,7 @@ export function ModelBreakdown({ rows, daily, since, colorOf, tokens, costs }: {
                   <span className="flex min-w-0 items-center gap-2">
                     <i className="swatch" style={{ background: color }} />
                     <span className="truncate text-sm font-medium">{name}</span>
-                    {tool && <span className="hidden truncate text-xs text-subtle sm:inline">{tool}</span>}
+                    {tool && <span className="hidden truncate text-xs text-subtle font-medium sm:inline">{tool}</span>}
                   </span>
                   <span className="flex flex-none items-center gap-2">
                     <span className="num text-sm">{show(v)}</span>

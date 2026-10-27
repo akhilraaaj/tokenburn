@@ -19,7 +19,7 @@ export function Stat({ label, value, hint, muted = false, title }: {
         <CardDescription className="text-xs">{label}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-0.5">
-        <span title={title} className={cn('num font-semibold tracking-tight', muted ? 'text-base text-subtle' : 'text-2xl')}>{value}</span>
+        <span title={title} className={cn('num font-semibold', muted ? 'text-base text-subtle' : 'text-2xl')}>{value}</span>
         {hint && <span className="text-xs text-subtle">{hint}</span>}
       </CardContent>
     </Card>
@@ -91,7 +91,7 @@ export function ToolCard({ provider, rows, sessions }: { provider: string; rows:
           {metrics.map(([label, v, note]) => (
             <div key={label} className="grid gap-0.5">
               <dt className="text-xs text-subtle">{label}</dt>
-              <dd className={cn('num text-lg font-semibold tracking-tight', v === null && 'text-sm font-normal text-subtle')} title={v === null ? undefined : fmt(v)}>
+              <dd className={cn('num text-lg font-semibold', v === null && 'text-sm font-normal text-subtle')} title={v === null ? undefined : fmt(v)}>
                 {v === null ? 'n/a' : compact(v)}
               </dd>
               {note && <span className="text-[0.7rem] leading-tight text-subtle">{note}</span>}

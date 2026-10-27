@@ -6,8 +6,8 @@ export function RouteError() {
   const error = useRouteError();
   const detail = isRouteErrorResponse(error) ? `${error.status} ${error.statusText}` : error instanceof Error ? error.message : String(error);
   return (
-    <div className="mx-auto grid min-h-svh max-w-md content-center justify-items-center gap-3 px-4 text-center">
-      <h1 className="text-2xl font-semibold tracking-tight">Something went wrong</h1>
+    <div className="mx-auto grid min-h-svh max-w-lg content-center justify-items-center gap-4 px-4 text-center">
+      <h1 className="text-2xl font-semibold">Something went wrong</h1>
       <p className="text-muted-foreground">The page hit an unexpected error. Reloading usually fixes it.</p>
       <div className="flex gap-2">
         <Button onClick={() => window.location.reload()}>Reload</Button>

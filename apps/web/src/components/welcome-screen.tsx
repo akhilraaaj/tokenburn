@@ -29,7 +29,7 @@ export function WelcomeScreen({ origin }: { origin: string }) {
   return (
     <div className="mx-auto grid w-full max-w-2xl grid-cols-1 gap-6 py-4 sm:py-8">
       <div className="grid gap-1">
-        <h2 className="text-2xl font-semibold tracking-tight">Welcome to tokenburn{user ? `, ${user.github_login}` : ''}</h2>
+        <h2 className="text-2xl font-semibold">Welcome to tokenburn{user ? `, ${user.github_login}` : ''}</h2>
         <p className="text-muted-foreground">Two quick steps and your AI coding usage shows up here.</p>
       </div>
       <ol className="grid grid-cols-1 gap-3">
@@ -147,18 +147,25 @@ function UsernameForm({ origin, saved, onSaved }: { origin: string; saved: strin
 
   return (
     <form onSubmit={save} className="grid grid-cols-1 gap-2">
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <div className="flex h-9 min-w-0 flex-1 items-center rounded-md border bg-background shadow-xs focus-within:ring-[3px] focus-within:ring-ring/50">
-          <span className="shrink-0 pl-3 text-sm text-subtle">{host}/@</span>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex h-9 min-w-0 flex-1 overflow-hidden rounded-lg border bg-background shadow-xs transition-shadow focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50">
+          <span className="flex h-full shrink-0 items-center border-r bg-surface-2 px-3 font-mono text-sm text-muted-foreground">
+            <span className="hidden sm:inline">{host}/</span>@
+          </span>
           <Input
             aria-label="Username"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => setName(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 30))}
             maxLength={30}
             autoComplete="off"
             spellCheck={false}
-            className="h-full min-w-0 border-0 bg-transparent pl-0.5 shadow-none focus-visible:ring-0 dark:bg-transparent"
+            placeholder="yourname"
+            className="h-full min-w-0 rounded-none border-0 bg-transparent px-2.5 font-mono shadow-none focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent"
           />
+          <span className="flex items-center pr-2.5 text-subtle">
+            {check.state === 'checking' && <Loader2 className="size-3.5 animate-spin" />}
+            {check.state === 'ok' && <Check className="size-3.5" style={{ color: 'var(--series-3)' }} />}
+          </span>
         </div>
         <Button type="submit" disabled={busy || unchanged || check.state !== 'ok'}>{busy ? 'Saving…' : saved ? 'Change' : 'Claim'}</Button>
       </div>

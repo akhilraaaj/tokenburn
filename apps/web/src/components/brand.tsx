@@ -14,7 +14,7 @@ export function LogoMark({ className }: { className?: string }) {
 
 export function Wordmark({ to = '/', className }: { to?: string; className?: string }) {
   return (
-    <Link to={to} className={cn('inline-flex items-center gap-2 font-semibold tracking-tight text-foreground', className)}>
+    <Link to={to} className={cn('inline-flex items-center gap-2 font-semibold text-foreground', className)}>
       <LogoMark />
       <span>tokenburn</span>
     </Link>
