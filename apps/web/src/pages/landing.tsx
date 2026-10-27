@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  ArrowDown, ArrowRight, AtSign, BarChart3, Bot, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight, CloudUpload, Coins, Flame, Globe, Laptop, Layers, Lock, RefreshCw, Terminal,
+  ArrowDown, ArrowRight, AtSign, BarChart3, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight, CloudUpload, Coins, Flame, Globe, Laptop, Layers, Lock, RefreshCw, Terminal,
 } from 'lucide-react';
 import { GitHubMark, LogoMark, ToolMark, TOOL_MARKS } from '@/components/brand';
 import { CopyCommand } from '@/components/copy-command';
+import { TOOL_LOGOS, ToolLogoMark } from '@/components/tool-logos';
 import { Pills } from '@/components/pills';
 import { UsageChart } from '@/components/usage-chart';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -23,12 +24,6 @@ import { KpiCard, streakRuns } from './overview';
 import { ProfileHeader, ProfileView } from './profile';
 
 const INSTALL = 'npm install -g use-tokenburn && tokenburn setup';
-
-const TOOLS: { name: string; mark?: keyof typeof TOOL_MARKS }[] = [
-  { name: 'Claude Code', mark: 'claude' }, { name: 'Codex CLI', mark: 'codex' }, { name: 'Cursor', mark: 'cursor' },
-  { name: 'OpenCode', mark: 'opencode' }, { name: 'Gemini CLI', mark: 'gemini' }, { name: 'Grok CLI', mark: 'grok' },
-  { name: 'Hermes Agent' }, { name: 'OpenRouter', mark: 'openrouter' },
-];
 
 const STEPS = [
   { title: 'Install the CLI', body: 'One small npm package for macOS, Linux and Windows (Node 22.18+).', command: 'npm install -g use-tokenburn' },
@@ -298,13 +293,10 @@ export function Landing() {
           <div className="grid gap-4">
             <p className="text-center text-xs font-medium tracking-widest text-subtle uppercase">Works with the tools you already use</p>
             <div className="marquee overflow-hidden">
-              <div className="marquee-track flex w-max py-1">
-                {[...TOOLS, ...TOOLS].map((t, i) => (
-                  <span key={i} aria-hidden={i >= TOOLS.length} className="grid w-32 justify-items-center gap-2.5 text-xs whitespace-nowrap text-muted-foreground">
-                    <span className={cn('flex size-11 items-center justify-center rounded-xl shadow-sm shadow-black/5', t.mark ? TOOL_TILES[t.mark] : 'border bg-card text-muted-foreground')}>
-                      {t.mark ? <ToolMark tool={t.mark} className="size-5.5" /> : <Bot className="size-5.5" />}
-                    </span>
-                    {t.name}
+              <div className="marquee-track flex w-max items-center py-2">
+                {[...TOOL_LOGOS, ...TOOL_LOGOS].map((t, i) => (
+                  <span key={i} aria-hidden={i >= TOOL_LOGOS.length} className="flex flex-none items-center px-6 text-muted-foreground/80 transition-colors hover:text-foreground sm:px-8">
+                    <ToolLogoMark logo={t} className="[--logo-h:1.25rem] sm:[--logo-h:1.5rem]" />
                   </span>
                 ))}
               </div>
@@ -495,6 +487,7 @@ const TOOL_TILES: Record<keyof typeof TOOL_MARKS, string> = {
   grok: 'bg-black text-white dark:border dark:border-white/15',
   opencode: 'border bg-white text-black',
   openrouter: 'bg-[#6467f2] text-white',
+  hermes: 'border bg-white text-black',
 };
 const HEADLINE_TOOLS = Object.keys(TOOL_TILES) as (keyof typeof TOOL_MARKS)[];
 /** How long each headline slot holds a tool; different on purpose, so the slots drift instead of swapping in step. */
