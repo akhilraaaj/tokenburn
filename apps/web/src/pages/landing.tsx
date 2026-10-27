@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import {
-  ArrowDown, ArrowRight, AtSign, BarChart3, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight, CloudUpload, Coins, Flame, Globe, Laptop, Layers, Lock, RefreshCw, Terminal,
+  ArrowDown, ArrowRight, AtSign, BarChart3, Bot, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight, CloudUpload, Coins, Flame, Globe, Laptop, Layers, Lock, RefreshCw, Terminal,
 } from 'lucide-react';
-import { GitHubMark, LogoMark } from '@/components/brand';
+import { GitHubMark, LogoMark, ToolMark, TOOL_MARKS } from '@/components/brand';
 import { CopyCommand } from '@/components/copy-command';
 import { Pills } from '@/components/pills';
 import { UsageChart } from '@/components/usage-chart';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -24,7 +24,11 @@ import { ProfileHeader, ProfileView } from './profile';
 
 const INSTALL = 'npm install -g use-tokenburn && tokenburn setup';
 
-const TOOLS = ['Claude Code', 'Codex CLI', 'Cursor', 'OpenCode', 'Gemini CLI', 'Grok CLI', 'Hermes Agent', 'OpenRouter'];
+const TOOLS: { name: string; mark?: keyof typeof TOOL_MARKS }[] = [
+  { name: 'Claude Code', mark: 'claude' }, { name: 'Codex CLI', mark: 'codex' }, { name: 'Cursor', mark: 'cursor' },
+  { name: 'OpenCode', mark: 'opencode' }, { name: 'Gemini CLI', mark: 'gemini' }, { name: 'Grok CLI', mark: 'grok' },
+  { name: 'Hermes Agent' }, { name: 'OpenRouter', mark: 'openrouter' },
+];
 
 const STEPS = [
   { title: 'Install the CLI', body: 'One small npm package for macOS, Linux and Windows (Node 22.18+).', command: 'npm install -g use-tokenburn' },
@@ -214,7 +218,6 @@ const cleanHandle = (s: string) => s.toLowerCase().replace(/[^a-z0-9-]/g, '').sl
 export function Landing() {
   const { user } = useSession();
   const [params] = useSearchParams();
-  const error = ERRORS[params.get('error') ?? ''];
   const deleted = params.get('deleted') === '1';
   const navigate = useNavigate();
   const example = useMemo(exampleRows, []);
@@ -225,11 +228,24 @@ export function Landing() {
   const [step, setStep] = useState(0);
   const profile = useMemo(() => exampleProfile(shown, shows), [shown, shows]);
 
+  // Sign-in failures land here as ?error=… — toast once, then drop the param so refresh doesn't re-fire.
+  const errorToasted = useRef(false);
+  useEffect(() => {
+    const code = params.get('error');
+    if (!code || errorToasted.current) return;
+    errorToasted.current = true;
+    const message = ERRORS[code];
+    if (message) toast.error(message);
+    const next = new URLSearchParams(params);
+    next.delete('error');
+    const qs = next.toString();
+    navigate(qs ? `/?${qs}` : '/', { replace: true });
+  }, [params, navigate]);
+
   return (
     <div className="relative overflow-x-clip">
 
-      <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-28 px-4 pt-16 pb-24 sm:px-6 sm:pt-24">
-        {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+      <div className="mx-auto grid w-full max-w-5xl grid-cols-1 gap-16 px-4 pt-16 pb-24 sm:px-6 sm:pt-24">
         <Dialog open={deleted} onOpenChange={(open) => { if (!open) navigate('/', { replace: true }); }}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
@@ -251,24 +267,26 @@ export function Landing() {
 
         {/* Hero */}
         <section className="grid grid-cols-1 justify-items-center gap-7 text-center animate-in fade-in slide-in-from-bottom-3 duration-700">
-          <Badge variant="outline" className="gap-1.5 rounded-full px-3 py-1 font-normal text-muted-foreground">
-            <span className="relative flex size-1.5">
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-brand opacity-60" />
-              <span className="relative inline-flex size-1.5 rounded-full bg-brand" />
+          <span className="inline-flex items-center gap-2.5 rounded-full border bg-card py-1 pr-3.5 pl-1 text-xs text-muted-foreground shadow-xs">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[color-mix(in_oklab,var(--series-2)_12%,transparent)] px-2 py-0.5 font-medium text-[var(--series-2)]">
+              <span className="relative flex size-1.5">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--series-2)] opacity-60" />
+                <span className="relative inline-flex size-1.5 rounded-full bg-[var(--series-2)]" />
+              </span>
+              Local-first
             </span>
-            Local-first · Private by default
-          </Badge>
+            Private by default
+          </span>
           <h1 className="max-w-4xl text-4xl font-semibold text-balance sm:text-6xl">
-            Every token you burn, in one place.
+            <ToolHeadline />
           </h1>
-          <p className="max-w-2xl text-base text-pretty text-muted-foreground sm:text-lg">
-            tokenburn tracks your AI coding across Claude Code, Codex, Cursor and more, right from your machine. Get a private
-            dashboard of models, tokens, streaks and cost, and a public <span className="font-medium text-foreground">@profile</span> that
-            shows how you build with AI.
+          <p className="max-w-xl text-base text-pretty text-muted-foreground sm:text-lg">
+            See how you really build with AI. Every model, token and streak across your tools, on one dashboard and
+            one <span className="font-medium text-foreground">@profile</span> worth sharing.
           </p>
           <HandleClaim handle={handle} onChange={setHandle} />
           <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-sm text-subtle">
-            <span className="inline-flex items-center gap-1.5"><Check className="size-3.5 text-brand" />8 tools supported</span>
+            <span className="inline-flex items-center gap-1.5"><Check className="size-3.5 text-brand" />Claude Code, Codex, Gemini + more</span>
             <span className="inline-flex items-center gap-1.5"><Check className="size-3.5 text-brand" />Setup in a minute</span>
             <span className="inline-flex items-center gap-1.5"><Check className="size-3.5 text-brand" />Your code never leaves</span>
           </div>
@@ -280,10 +298,13 @@ export function Landing() {
           <div className="grid gap-4">
             <p className="text-center text-xs font-medium tracking-widest text-subtle uppercase">Works with the tools you already use</p>
             <div className="marquee overflow-hidden">
-              <div className="marquee-track flex w-max gap-3">
+              <div className="marquee-track flex w-max py-1">
                 {[...TOOLS, ...TOOLS].map((t, i) => (
-                  <span key={i} aria-hidden={i >= TOOLS.length} className="inline-flex items-center gap-2 rounded-full border bg-card px-4 py-1.5 text-sm whitespace-nowrap text-muted-foreground">
-                    <span className="swatch rounded-full" style={{ background: `var(--series-${(i % TOOLS.length) % 7 + 1})` }} />{t}
+                  <span key={i} aria-hidden={i >= TOOLS.length} className="grid w-32 justify-items-center gap-2.5 text-xs whitespace-nowrap text-muted-foreground">
+                    <span className={cn('flex size-11 items-center justify-center rounded-xl shadow-sm shadow-black/5', t.mark ? TOOL_TILES[t.mark] : 'border bg-card text-muted-foreground')}>
+                      {t.mark ? <ToolMark tool={t.mark} className="size-5.5" /> : <Bot className="size-5.5" />}
+                    </span>
+                    {t.name}
                   </span>
                 ))}
               </div>
@@ -465,6 +486,77 @@ export function Landing() {
   );
 }
 
+/** Each tool's mark on its own brand tile, shared by the headline and the marquee. */
+const TOOL_TILES: Record<keyof typeof TOOL_MARKS, string> = {
+  claude: 'bg-[#d97757] text-white',
+  codex: 'border bg-white text-black',
+  cursor: 'bg-black text-white dark:border dark:border-white/15',
+  gemini: 'bg-[#3186ff] text-white',
+  grok: 'bg-black text-white dark:border dark:border-white/15',
+  opencode: 'border bg-white text-black',
+  openrouter: 'bg-[#6467f2] text-white',
+};
+const HEADLINE_TOOLS = Object.keys(TOOL_TILES) as (keyof typeof TOOL_MARKS)[];
+/** How long each headline slot holds a tool; different on purpose, so the slots drift instead of swapping in step. */
+const SLOT_HOLD_MS = [2900, 3700, 4500];
+
+/** The headline copy with its icon slots. Each slot keeps its own clock and moves to the next tool not on screen. */
+function ToolHeadline() {
+  const [shown, setShown] = useState([0, 1, 2]);
+  useEffect(() => {
+    if (prefersReducedMotion()) return;
+    let timers: ReturnType<typeof setInterval>[] = [];
+    const start = () => {
+      timers = SLOT_HOLD_MS.map((ms, slot) => setInterval(() => setShown((prev) => {
+        let next = prev[slot];
+        do next = (next + 1) % HEADLINE_TOOLS.length; while (prev.includes(next));
+        return prev.map((v, i) => (i === slot ? next : v));
+      }), ms));
+    };
+    const stop = () => timers.forEach(clearInterval);
+    // Background tabs skip transitions, so swaps there would land as jumps on return; pause while hidden.
+    const onVisibility = () => (document.hidden ? stop() : (stop(), start()));
+    start();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
+  return <>Every token <HeadlineIcon active={shown[0]} /> you burn, <HeadlineIcon active={shown[1]} /> in one <HeadlineIcon active={shown[2]} /> place.</>;
+}
+
+/**
+ * Swap timing, a flip in two strictly separate halves: the old tile folds away to edge-on, and only then does the
+ * next one unfold into place. Nothing overlaps.
+ */
+const TILE_OUT = 'transform 280ms cubic-bezier(0.5, 0, 0.75, 0), opacity 280ms cubic-bezier(0.5, 0, 0.75, 0)';
+const TILE_IN = 'transform 420ms cubic-bezier(0.25, 1, 0.5, 1) 280ms, opacity 420ms cubic-bezier(0.25, 1, 0.5, 1) 280ms';
+
+/**
+ * An app-icon tile set inline with the headline text, sized to the font. Every tool's tile stays mounted and only
+ * transform and opacity change (both GPU-composited).
+ */
+function HeadlineIcon({ active }: { active: number }) {
+  return (
+    <span aria-hidden className="relative inline-block size-[0.92em] translate-y-[-0.06em] align-middle [perspective:12em]">
+      {HEADLINE_TOOLS.map((tool, i) => (
+        <span
+          key={tool}
+          className={cn(
+            'absolute inset-0 flex items-center justify-center rounded-[0.24em] shadow-md shadow-black/10 will-change-[opacity,transform] motion-reduce:!transition-none',
+            TOOL_TILES[tool],
+            i === active ? 'opacity-100' : 'opacity-0',
+          )}
+          style={{ transform: i === active ? 'rotateX(0deg)' : 'rotateX(90deg)', transition: i === active ? TILE_IN : TILE_OUT }}
+        >
+          <ToolMark tool={tool} className="size-[0.56em]" />
+        </span>
+      ))}
+    </span>
+  );
+}
+
 /** Primary call to action, depending on whether someone is signed in and has a username yet. */
 function ProfileCta() {
   const { user } = useSession();
@@ -478,34 +570,54 @@ function HandleClaim({ handle, onChange }: { handle: string; onChange: (h: strin
   const { user } = useSession();
   if (user) {
     return (
-      <div className="grid w-full max-w-md grid-cols-1 justify-items-center gap-4">
-        <div className="flex flex-wrap justify-center gap-3">
-          <Button asChild size="lg"><Link to="/dashboard">Open dashboard <ArrowRight /></Link></Button>
-          {user.username && <Button asChild size="lg" variant="outline"><Link to={`/@${user.username}`}>View your profile</Link></Button>}
+      <div className="grid w-full max-w-xl grid-cols-1 gap-2.5">
+        {/* Same shape as the claim field below, with the signed-in actions in place of the input. */}
+        <div className="flex overflow-hidden rounded-xl border bg-card shadow-xs">
+          <span className="flex shrink-0 items-center border-r bg-surface-2 px-3 font-mono text-sm text-muted-foreground">
+            <span className="hidden sm:inline">{window.location.host}/</span>@
+          </span>
+          {user.username ? (
+            <Link to={`/@${user.username}`} className="flex min-w-0 flex-1 items-center truncate px-3 py-2.5 text-left font-mono text-sm text-foreground hover:text-brand">
+              {user.username}
+            </Link>
+          ) : (
+            <span className="flex min-w-0 flex-1 items-center truncate px-3 py-2.5 text-left font-mono text-sm text-subtle">no handle yet</span>
+          )}
+          <div className="flex items-center gap-1.5 p-1.5">
+            {user.username && <Button asChild size="sm" variant="ghost" className="h-8 px-3 max-sm:hidden"><Link to={`/@${user.username}`}>Profile</Link></Button>}
+            <Button asChild size="sm" className="h-8 px-3"><Link to="/dashboard">Dashboard <ArrowRight /></Link></Button>
+          </div>
         </div>
         <CopyCommand command={INSTALL} className="w-full text-left" />
       </div>
     );
   }
+  const host = window.location.host;
   return (
-    <div className="grid w-full max-w-lg grid-cols-1 gap-3">
+    <div className="grid w-full max-w-xl grid-cols-1 gap-2.5">
       <form
         action="/login"
-        className="flex items-center gap-1 rounded-xl border bg-card p-1.5 shadow-lg shadow-black/5 transition-shadow focus-within:ring-[3px] focus-within:ring-ring/30"
+        className="flex overflow-hidden rounded-xl border bg-card shadow-xs transition-shadow focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/40"
       >
-        <label htmlFor="handle" className="flex min-w-0 flex-1 items-center pl-3 font-mono text-sm">
-          <span className="flex-none text-subtle"><span className="hidden sm:inline">{window.location.host}/</span>@</span>
+        <label htmlFor="handle" className="flex min-w-0 flex-1 items-stretch">
+          <span className="flex shrink-0 items-center border-r bg-surface-2 px-3 font-mono text-sm text-muted-foreground">
+            <span className="hidden sm:inline">{host}/</span>@
+          </span>
           <input
             id="handle"
+            name="handle"
             value={handle}
             onChange={(e) => onChange(cleanHandle(e.target.value))}
             placeholder="yourname"
             autoComplete="off"
             spellCheck={false}
-            className="w-full min-w-16 bg-transparent py-1.5 text-foreground outline-none placeholder:text-subtle/70"
+            maxLength={30}
+            className="min-w-0 flex-1 bg-transparent px-3 py-2.5 font-mono text-sm text-foreground outline-none placeholder:text-subtle"
           />
         </label>
-        <Button type="submit" size="lg" className="flex-none">Claim <ArrowRight /></Button>
+        <div className="flex items-center p-1.5">
+          <Button type="submit" size="sm" className="h-8 px-3">Claim <ArrowRight /></Button>
+        </div>
       </form>
       <CopyCommand command={INSTALL} className="w-full text-left" />
     </div>
@@ -554,10 +666,6 @@ function ProfilePreview({ profile }: { profile: PublicProfile }) {
         <ProfileHeader />
         <div className="mx-auto grid w-full max-w-3xl grid-cols-1 gap-6 px-4 pt-2 pb-8 sm:px-6">
           <ProfileView profile={profile} preview />
-          <p className="text-xs text-subtle">
-            Token counts come from each tool's own records and aren't comparable across tools in every detail.
-            {profile.shows.costs && ' Costs are API list-price estimates unless billed by the provider; not what a subscription costs.'}
-          </p>
         </div>
       </div>
     </div>
@@ -592,7 +700,7 @@ function HeroDashboard({ rows, since, colorOf, handle }: { rows: Row[]; since: s
             <span className="hidden text-muted-foreground sm:inline">Dashboard</span>
             <ChevronRight className="hidden size-3.5 text-subtle sm:block" />
             <span className="font-medium">Overview</span>
-            <span className="ml-auto inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs text-muted-foreground">
+            <span className="ml-auto inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs text-muted-foreground font-medium">
               <span className="size-1.5 rounded-full" style={{ background: 'var(--series-3)' }} />Synced 4 min ago
             </span>
           </div>

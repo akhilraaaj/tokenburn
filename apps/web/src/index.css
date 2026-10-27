@@ -157,10 +157,18 @@
 @layer components {
   .swatch { @apply inline-block size-2.5 rounded-[3px] flex-none align-middle; }
   .num { font-variant-numeric: tabular-nums; }
+  .no-scrollbar { scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
 
   /* Landing page: the looping tools marquee. */
   .marquee { mask-image: linear-gradient(to right, transparent, #000 12%, #000 88%, transparent); }
   .marquee-track { animation: marquee 40s linear infinite; }
   @keyframes marquee { to { transform: translateX(-50%); } }
   @media (prefers-reduced-motion: reduce) { .marquee-track { animation: none; } }
+
+  /* Landing hero: each piece rises in, staggered with an inline animation-delay. */
+  .hero-in { animation: hero-in 0.9s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  @keyframes hero-in { from { opacity: 0; transform: translateY(12px); filter: blur(4px); } }
+  @media (prefers-reduced-motion: reduce) { .hero-in { animation: none; } }
+
 }

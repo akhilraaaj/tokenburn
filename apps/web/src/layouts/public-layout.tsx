@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { Wordmark } from '@/components/brand';
+import { LogoMark, Wordmark } from '@/components/brand';
 import { Button } from '@/components/ui/button';
 import { useSession } from '@/session';
 
@@ -12,7 +12,9 @@ export function PublicLayout() {
   // window.scrollTo return a Promise, which React would later try to call as a cleanup and crash.
   useEffect(() => {
     window.scrollTo(0, 0);
-    if (!pathname.startsWith('/@') && !pathname.startsWith('/%40')) document.title = 'tokenburn';
+    if (!pathname.startsWith('/@') && !pathname.startsWith('/%40')) {
+      document.title = pathname === '/' ? 'tokenburn · AI coding usage, tracked locally' : 'tokenburn';
+    }
   }, [pathname]);
   // Public profiles bring their own minimal top bar (logo + actions) and no footer.
   const seg = decodeURIComponent(pathname.slice(1));
@@ -40,9 +42,12 @@ export function PublicLayout() {
         <Outlet />
       </main>
       <footer className="border-t">
-        <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-6 text-xs text-subtle sm:px-6">
-          <span>tokenburn · your AI coding usage, collected locally</span>
-          <span>Token counts come from each tool's own records. Costs are estimates.</span>
+        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 py-5 sm:px-6">
+          <Link to={user ? '/dashboard' : '/'} className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground">
+            <LogoMark className="size-4" />
+            tokenburn
+          </Link>
+          <span className="text-xs text-subtle font-medium">Collected locally · costs are estimates</span>
         </div>
       </footer>
     </div>

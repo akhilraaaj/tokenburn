@@ -124,7 +124,7 @@ export function Settings() {
           <form onSubmit={saveUsername} className="grid max-w-lg grid-cols-1 gap-2">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <div className="flex h-9 min-w-0 flex-1 overflow-hidden rounded-lg border bg-background shadow-xs transition-shadow focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50">
-                <span className="flex h-full shrink-0 items-center border-r bg-surface-2 px-3 font-mono text-sm text-muted-foreground">
+                <span className="flex h-full shrink-0 items-center border-r bg-surface-2 px-3 font-mono text-sm text-muted-foreground font-medium">
                   <span className="hidden sm:inline">{host}/</span>@
                 </span>
                 <Input
@@ -135,9 +135,9 @@ export function Settings() {
                   spellCheck={false}
                   placeholder="yourname"
                   aria-label="Username"
-                  className="h-full min-w-0 rounded-none border-0 bg-transparent px-2.5 font-mono shadow-none focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent"
+                  className="h-full min-w-0 rounded-none border-0 bg-transparent px-2.5 font-mono font-medium shadow-none focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent"
                 />
-                <span className="flex items-center pr-2.5 text-subtle">
+                <span className="flex items-center pr-2.5 text-subtle font-medium">
                   {availability.state === 'checking' && <Loader2 className="size-3.5 animate-spin" />}
                   {availability.state === 'ok' && <Check className="size-3.5" style={{ color: 'var(--series-3)' }} />}
                 </span>
@@ -156,7 +156,7 @@ export function Settings() {
               {availability.state === 'ok' && 'Available'}
               {availability.state === 'checking' && 'Checking…'}
               {availability.state === 'idle' && unchanged && savedUsername && (
-                <Link to={`/@${savedUsername}`} className="inline-flex items-center gap-1 hover:text-foreground">
+                <Link to={`/@${savedUsername}`} className="inline-flex items-center gap-1 mt-1 hover:text-foreground font-medium">
                   {host}/@{savedUsername}<ExternalLink className="size-3" />
                 </Link>
               )}
@@ -173,9 +173,9 @@ export function Settings() {
         </CardHeader>
         <CardContent className="grid gap-5">
           <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
-            <div className="grid gap-0.5">
+            <div className="grid gap-1.5">
               <Label htmlFor="is_public" className="font-medium">Make my profile public</Label>
-              <span className="text-xs text-muted-foreground">{data.user.username ? `${host}/@${data.user.username}` : 'Set a username first'}</span>
+              <span className="text-xs text-muted-foreground font-medium">{data.user.username ? `${host}/@${data.user.username}` : 'Set a username first'}</span>
             </div>
             <Switch id="is_public" checked={flag('is_public')} disabled={!data.user.username} onCheckedChange={(v) => set('is_public', v)} />
           </div>
@@ -188,9 +188,9 @@ export function Settings() {
               <div key={k}>
                 {i > 0 && <Separator />}
                 <div className="flex items-center justify-between gap-4 py-3">
-                  <div className="grid gap-0.5">
+                  <div className="grid gap-1.5">
                     <Label htmlFor={k}>{label}</Label>
-                    <span className="text-xs text-muted-foreground">{help}</span>
+                    <span className="text-xs text-muted-foreground font-medium">{help}</span>
                   </div>
                   <Switch id={k} checked={flag(k)} onCheckedChange={(v) => set(k, v)} />
                 </div>
@@ -216,9 +216,9 @@ export function Settings() {
             <div key={d.id}>
               {i > 0 && <Separator />}
               <div className="flex items-center justify-between gap-4 py-3">
-                <div className="grid gap-0.5">
+                <div className="grid gap-1.5">
                   <span className="text-sm font-medium">{d.name}</span>
-                  <span className="text-xs text-muted-foreground">Connected {d.created_at.slice(0, 10)} · last sync {timeAgo(d.last_sync_at)}</span>
+                  <span className="text-xs text-muted-foreground font-medium">Connected {d.created_at.slice(0, 10)} · last sync {timeAgo(d.last_sync_at)}</span>
                 </div>
                 <Confirm
                   trigger={<Button variant="destructive" size="sm">Disconnect</Button>}
@@ -245,9 +245,9 @@ export function Settings() {
         </CardHeader>
         <CardContent className="grid gap-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="grid gap-0.5">
+            <div className="grid gap-1.5">
               <span className="text-sm font-medium">Delete uploaded usage</span>
-              <span className="text-xs text-muted-foreground">Removes it from the server for one tool or all of them.</span>
+              <span className="text-xs text-muted-foreground font-medium">Removes it from the server for one tool or all of them.</span>
             </div>
             <div className="flex items-center gap-2">
               <Select value={provider} onValueChange={setProvider}>
@@ -272,9 +272,9 @@ export function Settings() {
           </div>
           <Separator />
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="grid gap-0.5">
+            <div className="grid gap-1.5">
               <span className="text-sm font-medium">Delete account</span>
-              <span className="text-xs text-muted-foreground">Deletes your account, profile and all uploaded usage.</span>
+              <span className="text-xs text-muted-foreground font-medium">Deletes your account, profile and all uploaded usage.</span>
             </div>
             <Confirm
               trigger={<Button variant="destructive" size="sm">Delete account</Button>}

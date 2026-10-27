@@ -183,7 +183,7 @@ export function AppLayout() {
               <span className="truncate font-semibold">{TITLES[pathname] ?? 'Dashboard'}</span>
             </nav>
             {data && data.devices.length > 0 && (
-              <span className="ml-auto inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs text-muted-foreground" title={lastSync ?? ''}>
+              <span className="ml-auto inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs text-muted-foreground font-medium" title={lastSync ?? ''}>
                 <span className="size-1.5 rounded-full" style={{ background: stale ? 'var(--series-4)' : 'var(--series-3)' }} />
                 {lastSync ? `Synced ${timeAgo(lastSync)}` : 'Not synced yet'}
               </span>
@@ -200,10 +200,7 @@ export function AppLayout() {
   );
 }
 
-/**
- * Profile live/private status — same chip language as the header sync pill (dot + quiet label), as a
- * real sidebar row so icon-collapse still works via tooltip.
- */
+/** Profile live/private status — same chip language as the header sync pill; hidden when the sidebar is collapsed. */
 function ProfileStatus({ username, isPublic }: { username: string | null; isPublic: boolean | null }) {
   if (isPublic === null) return null;
   const live = isPublic && !!username;
@@ -211,14 +208,14 @@ function ProfileStatus({ username, isPublic }: { username: string | null; isPubl
   const tip = live ? `Public · @${username}` : username ? 'Private profile' : 'Choose a username';
 
   return (
-    <SidebarGroup className="mt-auto px-2 pb-1 group-data-[collapsible=icon]:px-0">
+    <SidebarGroup className="mt-auto px-2 pb-1 group-data-[collapsible=icon]:hidden">
       <SidebarGroupContent>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
               asChild
               tooltip={tip}
-              className="h-8 rounded-md border border-sidebar-border bg-sidebar-accent px-2.5 text-xs text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-accent group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:rounded-full! group-data-[collapsible=icon]:border-sidebar-border group-data-[collapsible=icon]:p-0!"
+              className="h-8 rounded-md border border-sidebar-border bg-sidebar-accent px-2.5 text-xs text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-accent"
             >
               <Link to={href}>
                 <span className="size-1.5 flex-none rounded-full" style={{ background: live ? 'var(--series-3)' : 'var(--series-other)' }} />

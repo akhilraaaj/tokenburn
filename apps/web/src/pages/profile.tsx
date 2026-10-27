@@ -142,7 +142,7 @@ export function ProfileHeader() {
       {!loading && (
         <div className="flex items-center gap-2">
           {user ? (
-            <Button asChild size="sm" variant="ghost"><Link to="/dashboard">Dashboard</Link></Button>
+            <Button asChild size="sm"><Link to="/dashboard">Dashboard</Link></Button>
           ) : (
             <>
               <Button asChild size="sm" variant="ghost"><a href="/login">Sign in</a></Button>
@@ -189,11 +189,6 @@ function ProfileBody({ handle }: { handle: string }) {
   return (
     <div className="mx-auto grid w-full max-w-3xl grid-cols-1 gap-6 px-4 pt-6 pb-12 sm:px-6">
       <ProfileView profile={profile} />
-      <p className="text-xs text-subtle">
-        Token counts come from each tool's own records and aren't comparable across tools in every detail.
-        {profile.shows.costs && ' Costs are API list-price estimates unless billed by the provider; not what a subscription costs.'}
-        {!user && <> <Link to="/" className="underline underline-offset-4">Track your own usage with tokenburn</Link></>}
-      </p>
     </div>
   );
 }
