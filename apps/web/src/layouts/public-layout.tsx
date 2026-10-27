@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { LogoMark, Wordmark } from '@/components/brand';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { useSession } from '@/session';
 
@@ -31,11 +32,14 @@ export function PublicLayout() {
               ))}
             </nav>
           )}
-          {!loading && (user ? (
-            <Button asChild size="sm"><Link to="/dashboard">Dashboard</Link></Button>
-          ) : (
-            <Button asChild size="sm"><a href="/login">Sign in with GitHub</a></Button>
-          ))}
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            {!loading && (user ? (
+              <Button asChild size="sm"><Link to="/dashboard">Dashboard</Link></Button>
+            ) : (
+              <Button asChild size="sm"><a href="/login">Sign in with GitHub</a></Button>
+            ))}
+          </div>
         </div>
       </header>
       <main className="flex-1">

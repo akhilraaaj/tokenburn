@@ -2,6 +2,7 @@ import { createContext, Suspense, useCallback, useContext, useEffect, useState }
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowUpRight, Boxes, ChevronRight, ChevronsUpDown, Globe, LayoutDashboard, Laptop, LogOut, Settings } from 'lucide-react';
 import type { DashboardData } from '../../../../packages/shared/src/index.ts';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { LogoMark } from '@/components/brand';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -182,12 +183,15 @@ export function AppLayout() {
               <ChevronRight className="hidden size-3.5 text-subtle sm:block" />
               <span className="truncate font-semibold">{TITLES[pathname] ?? 'Dashboard'}</span>
             </nav>
-            {data && data.devices.length > 0 && (
-              <span className="ml-auto inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs text-muted-foreground font-medium" title={lastSync ?? ''}>
-                <span className="size-1.5 rounded-full" style={{ background: stale ? 'var(--series-4)' : 'var(--series-3)' }} />
-                {lastSync ? `Synced ${timeAgo(lastSync)}` : 'Not synced yet'}
-              </span>
-            )}
+            <div className="ml-auto flex items-center gap-2">
+              {data && data.devices.length > 0 && (
+                <span className="inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs text-muted-foreground font-medium" title={lastSync ?? ''}>
+                  <span className="size-1.5 rounded-full" style={{ background: stale ? 'var(--series-4)' : 'var(--series-3)' }} />
+                  {lastSync ? `Synced ${timeAgo(lastSync)}` : 'Not synced yet'}
+                </span>
+              )}
+              <ThemeToggle />
+            </div>
           </header>
           <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-6 p-4 sm:p-6 lg:p-8">
             <Suspense fallback={<Skeleton className="h-72 rounded-xl" />}>

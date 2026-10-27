@@ -638,16 +638,23 @@ function ProfileControls({ shows, onChange }: { shows: Shows; onChange: (k: Show
   );
 }
 
+/** macOS window controls (close, minimize, zoom) for the browser and terminal frames. */
+function WindowDots() {
+  return (
+    <span aria-hidden className="flex flex-none gap-1.5">
+      <span className="size-2.5 rounded-full bg-[#ff5f57]" />
+      <span className="size-2.5 rounded-full bg-[#febc2e]" />
+      <span className="size-2.5 rounded-full bg-[#28c840]" />
+    </span>
+  );
+}
+
 /** The real profile page (top bar, ProfileView, footnote) inside a browser frame, fed example data. */
 function ProfilePreview({ profile }: { profile: PublicProfile }) {
   return (
     <div className="flex max-h-[860px] flex-col overflow-hidden rounded-xl border bg-background shadow-sm max-lg:max-h-[680px]">
       <div className="flex flex-none items-center gap-3 border-b bg-card px-4 py-2.5">
-        <div className="flex gap-1.5">
-          <span className="size-2.5 rounded-full bg-border" />
-          <span className="size-2.5 rounded-full bg-border" />
-          <span className="size-2.5 rounded-full bg-border" />
-        </div>
+        <WindowDots />
         <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md border bg-surface-2/60 px-2.5 py-1 font-mono text-xs text-muted-foreground">
           <Lock className="size-3 flex-none text-subtle" />
           <span className="truncate">{window.location.host}/<span className="text-foreground">@{profile.username}</span></span>
@@ -680,9 +687,7 @@ function HeroDashboard({ rows, since, colorOf, handle }: { rows: Row[]; since: s
   return (
     <div className="overflow-hidden rounded-xl border bg-background shadow-xl shadow-black/5">
       <div className="flex items-center gap-2 border-b bg-card px-4 py-2.5">
-        <span className="size-2.5 rounded-full bg-border" />
-        <span className="size-2.5 rounded-full bg-border" />
-        <span className="size-2.5 rounded-full bg-border" />
+        <WindowDots />
         <span className="ml-3 truncate font-mono text-xs text-subtle">{window.location.host}/dashboard</span>
         <Badge variant="secondary" className="ml-auto font-normal">Example data</Badge>
       </div>
@@ -880,9 +885,7 @@ function TerminalDemo({ handle, step }: { handle: string; step: number }) {
   return (
     <div ref={wrap} className="overflow-hidden rounded-xl border border-[var(--term-line)] bg-[var(--term-bg)] text-[var(--term-text)] shadow-lg">
       <div className="flex items-center gap-2 border-b border-[var(--term-line)] bg-[var(--term-bar)] px-4 py-2.5">
-        <span className="size-2.5 rounded-full bg-[#ff5f57]" />
-        <span className="size-2.5 rounded-full bg-[#febc2e]" />
-        <span className="size-2.5 rounded-full bg-[#28c840]" />
+        <WindowDots />
         <span className="ml-3 font-mono text-xs text-[var(--term-dim)]">~ zsh</span>
         <button
           type="button"

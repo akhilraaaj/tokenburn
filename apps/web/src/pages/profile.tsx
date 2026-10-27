@@ -6,6 +6,7 @@ import { CONTRIBUTION_DAYS, type PublicProfile } from '../../../../packages/shar
 import { GitHubMark, Wordmark } from '@/components/brand';
 import { ActivityCard, ContributionGraph, DailyBarsCard, ModelBreakdown, StreakCard, WeekdayChart } from '@/components/profile-widgets';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -139,18 +140,17 @@ export function ProfileHeader() {
   return (
     <header className="flex h-16 w-full items-center justify-between gap-3 px-4 sm:px-6">
       <Wordmark to={user ? '/dashboard' : '/'} />
-      {!loading && (
-        <div className="flex items-center gap-2">
-          {user ? (
-            <Button asChild size="sm"><Link to="/dashboard">Dashboard</Link></Button>
-          ) : (
-            <>
-              <Button asChild size="sm" variant="ghost"><a href="/login">Sign in</a></Button>
-              <Button asChild size="sm"><a href="/login">Create your profile</a></Button>
-            </>
-          )}
-        </div>
-      )}
+      <div className="flex items-center gap-2">
+        <ThemeToggle />
+        {!loading && (user ? (
+          <Button asChild size="sm"><Link to="/dashboard">Dashboard</Link></Button>
+        ) : (
+          <>
+            <Button asChild size="sm" variant="ghost"><a href="/login">Sign in</a></Button>
+            <Button asChild size="sm"><a href="/login">Create your profile</a></Button>
+          </>
+        ))}
+      </div>
     </header>
   );
 }
