@@ -305,9 +305,12 @@ function Confirm({ trigger, title, description, action, onConfirm, body, disable
   body?: React.ReactNode;
   disabled?: boolean;
 }) {
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   return (
-    <AlertDialog>
+    // Controlled: the action keeps the dialog open while it runs (preventDefault), so it closes it on success itself.
+    // A failure leaves it open with the error toast, to retry or cancel. No closing mid-request.
+    <AlertDialog open={open} onOpenChange={(o) => { if (!busy) setOpen(o); }}>
       <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
@@ -316,14 +319,21 @@ function Confirm({ trigger, title, description, action, onConfirm, body, disable
         </AlertDialogHeader>
         {body}
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
           <AlertDialogAction
             variant="destructive"
             disabled={disabled || busy}
             onClick={async (e) => {
               e.preventDefault();
               setBusy(true);
-              try { await onConfirm(); } catch (err) { toast.error(errorText(err)); } finally { setBusy(false); }
+              try {
+                await onConfirm();
+                setOpen(false);
+              } catch (err) {
+                toast.error(errorText(err));
+              } finally {
+                setBusy(false);
+              }
             }}
           >
             {action}

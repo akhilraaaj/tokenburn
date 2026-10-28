@@ -473,10 +473,15 @@ async function publicProfile(env: Env, username: string, since: string): Promise
   return out;
 }
 
-/** Public profile with a 60 s edge cache, shared by the JSON route and the share-preview shell. */
-async function cachedPublicProfile(env: Env, ctx: ExecutionContext | undefined, username: string): Promise<PublicProfile | null> {
+/**
+ * Public profile with a 60 s edge cache, shared by the JSON route and the share-preview shell. The owner always gets
+ * it fresh: purges only reach the data center that handled their change, and someone who just published (or
+ * unpublished) must see the result at once, not a minute later. Their fresh copy also refreshes this location's cache.
+ */
+async function cachedPublicProfile(env: Env, ctx: ExecutionContext | undefined, username: string, req: Request): Promise<PublicProfile | null> {
   const key = publicCacheKey(username);
-  const hit = await caches.default.match(key).catch(() => undefined);
+  const owner = (await sessionUser(req, env).catch(() => null))?.username === username.toLowerCase(); // no DB read without a session cookie
+  const hit = owner ? undefined : await caches.default.match(key).catch(() => undefined);
   if (hit) return hit.status === 404 ? null : hit.json<PublicProfile>();
   const prof = await publicProfile(env, username, PUBLIC_SINCE());
   const res = new Response(prof ? JSON.stringify(prof) : 'null', { status: prof ? 200 : 404, headers: { 'cache-control': 'public, max-age=60' } });
@@ -525,7 +530,7 @@ const webAvatar: Route = async (req, env) => {
 };
 
 const publicProfileJson: Route = async (req, env, p, ctx) => {
-  const prof = await cachedPublicProfile(env, ctx, p.username);
+  const prof = await cachedPublicProfile(env, ctx, p.username, req);
   if (!prof) throw new HttpError(404, 'Profile not found');
   return json(prof, 200, { 'cache-control': 'no-cache', 'access-control-allow-origin': '*' });
 };
@@ -709,8 +714,8 @@ const NOT_FOUND_META = { title: 'Not found · tokenburn', description: "This pag
 
 /**
  * /@username: the SPA shell with this profile's title, canonical URL, share-preview tags and structured data.
- * One URL per profile: other spellings (/@Alice, /@alice/) redirect to /@alice. Pages may be cached for a minute,
- * like the profile data behind them.
+ * One URL per profile: other spellings (/@Alice, /@alice/) redirect to /@alice. Browsers re-check the page on every
+ * visit (it embeds the profile, which can change any moment); the data behind it is edge-cached instead.
  */
 const profileShell: Route = async (req, env, p, ctx) => {
   const url = new URL(req.url);
@@ -722,11 +727,12 @@ const profileShell: Route = async (req, env, p, ctx) => {
   if (raw !== username || url.pathname !== `/@${username}`) {
     return new Response(null, { status: 301, headers: { location: `/@${username}${url.search}`, ...SECURITY_HEADERS } });
   }
-  const prof = await cachedPublicProfile(env, ctx, username);
-  if (!prof) return withMeta(new Response(shell.body, { status: 404, headers: pageHeaders(req, 'public, max-age=60') }), NOT_FOUND_META);
+  const prof = await cachedPublicProfile(env, ctx, username, req);
+  // no-cache: the browser re-checks every visit, so a page it saw before a publish/unpublish is never shown again.
+  if (!prof) return withMeta(new Response(shell.body, { status: 404, headers: pageHeaders(req, 'no-cache') }), NOT_FOUND_META);
   const canonical = `${SITE_URL}/@${prof.username}`;
   const description = profileDescription(prof);
-  return withMeta(new Response(shell.body, { status: 200, headers: pageHeaders(req, 'public, max-age=60') }), {
+  return withMeta(new Response(shell.body, { status: 200, headers: pageHeaders(req, 'no-cache') }), {
     title: `@${prof.username} · AI coding usage`, // same as the page sets once it loads (apps/web/src/pages/profile.tsx)
     description,
     canonical,

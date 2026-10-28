@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { build } from 'esbuild';
 import { getPlatformProxy, unstable_dev, type Unstable_DevWorker } from 'wrangler';
 
@@ -19,12 +20,20 @@ const SHELL = `<!doctype html><html><head><title>tokenburn · landing</title>
 
 let tmp: string;
 let worker: Unstable_DevWorker;
+let db: D1Database; // the same local database the dev server reads, for changes that bypass the API
+let disposeProxy: () => Promise<void>;
+const CAROL_SESSION = 'carol-session-token';
 const get = (p: string, init?: RequestInit) => worker.fetch(p, { redirect: 'manual', ...init } as any) as unknown as Promise<Response>;
 const page = async (p: string) => {
   const res = await get(p);
   return { res, html: await res.text() };
 };
 const count = (html: string, s: string) => html.split(s).length - 1;
+/** A page as a signed-in user sees it (session cookie name over http, see sessionCookieName). */
+const page2 = async (p: string, session: string) => {
+  const res = await get(p, { headers: { cookie: `tb_session=${session}` } });
+  return { res, html: await res.text() };
+};
 
 beforeAll(async () => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tb-worker-'));
@@ -48,7 +57,8 @@ beforeAll(async () => {
 
   // Schema and fixtures, written to the same local D1 the dev server then reads.
   const proxy = await getPlatformProxy<{ DB: D1Database }>({ configPath: config, persist: { path: path.join(persist, 'v3') } }); // unstable_dev's persistTo adds v3/
-  const db = proxy.env.DB;
+  db = proxy.env.DB;
+  disposeProxy = () => proxy.dispose();
   for (const file of fs.readdirSync(path.join(apiDir, 'migrations')).sort()) {
     const sql = fs.readFileSync(path.join(apiDir, 'migrations', file), 'utf8').replace(/--.*$/gm, '');
     for (const stmt of sql.split(';').map((x) => x.trim()).filter(Boolean)) await db.prepare(stmt).run();
@@ -61,8 +71,11 @@ beforeAll(async () => {
     db.prepare(`INSERT INTO profiles (user_id, is_public, display_name, show_providers, show_models, show_token_totals, show_streaks, updated_at)
                 VALUES ('u1', 1, '</script><script>alert(1)</script>', 1, 1, 1, 1, ?)`).bind(t),
     db.prepare("INSERT INTO profiles (user_id, is_public, updated_at) VALUES ('u2', 0, ?)").bind(t),
+    db.prepare("INSERT INTO users (id, github_id, github_login, username, created_at) VALUES ('u3', 3, 'carol-gh', 'carol', ?)").bind(t),
+    db.prepare("INSERT INTO profiles (user_id, is_public, show_providers, updated_at) VALUES ('u3', 0, 1, ?)").bind(t),
+    db.prepare('INSERT INTO auth_sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)')
+      .bind(crypto.createHash('sha256').update(CAROL_SESSION).digest('hex'), 'u3', new Date(Date.now() + 864e5).toISOString()),
   ]);
-  await proxy.dispose();
 
   worker = await unstable_dev(path.join(tmp, 'worker.js'), {
     config, persistTo: persist, logLevel: 'error', experimental: { disableExperimentalWarning: true },
@@ -71,6 +84,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await worker?.stop();
+  await disposeProxy?.();
   if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
 });
 
@@ -122,7 +136,7 @@ describe('/@username', () => {
   it('renders a public profile: its own meta, canonical, JSON-LD, data and crawler summary', async () => {
     const { res, html } = await page('/@alice');
     expect(res.status).toBe(200);
-    expect(res.headers.get('cache-control')).toBe('public, max-age=60');
+    expect(res.headers.get('cache-control')).toBe('no-cache');
     expect(html).toContain('<title>@alice · AI coding usage</title>');
     expect(count(html, 'name="description"')).toBe(1);
     expect(count(html, 'property="og:title"')).toBe(1);
@@ -153,6 +167,26 @@ describe('/@username', () => {
       expect(html, p).not.toContain('profile-data');
       expect(html, p).not.toContain('bob-gh');
     }
+  });
+});
+
+describe('publishing a profile', () => {
+  it('shows the owner the change at once, even where a stale "private" answer is still cached', async () => {
+    expect((await page('/@carol')).res.status).toBe(404); // a visitor's view while private: cached at the edge
+    // Published, as seen from a data center the save's cache purge never reached.
+    await db.prepare("UPDATE profiles SET is_public = 1 WHERE user_id = 'u3'").run();
+    const visitor = await get('/api/public/carol');
+    expect(visitor.status).toBe(404); // other visitors: up to 60 s stale, by design
+    await visitor.text();
+
+    const owner = await page2('/@carol', CAROL_SESSION);
+    expect(owner.res.status).toBe(200);
+    expect(owner.res.headers.get('cache-control')).toBe('no-cache'); // and browsers never reuse a stale copy
+    expect(owner.html).toContain('id="profile-data"');
+    // The owner's fresh read also refreshed this location's cache for everyone.
+    const after = await get('/api/public/carol');
+    expect(after.status).toBe(200);
+    await after.text();
   });
 });
 

@@ -514,7 +514,7 @@ export function ModelBreakdown({ rows, daily, since, colorOf, tokens, costs }: {
           <button
             type="button"
             onClick={() => setAll(!all)}
-            className="inline-flex items-center justify-center gap-1.5 border-t pt-3 pb-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            className="inline-flex items-center justify-center gap-1.5 border-t pt-3 pb-1 text-sm text-muted-foreground font-medium transition-colors hover:text-foreground"
           >
             {all ? 'Show less' : `Show ${list.length - MODELS_SHOWN} more`}
             <ChevronDown className={cn('size-4 transition-transform', all && 'rotate-180')} />
