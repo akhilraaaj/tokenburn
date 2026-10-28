@@ -2,7 +2,7 @@ import { lazy, memo, Suspense, useDeferredValue, useEffect, useMemo, useRef, use
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  ArrowDown, ArrowRight, AtSign, BarChart3, CalendarDays, Check, ChevronDown, ChevronRight, Coins, Flame, Globe, Laptop, Layers, Loader2, Lock, RefreshCw, Terminal, X,
+  ArrowRight, AtSign, BarChart3, CalendarDays, Check, ChevronDown, ChevronRight, Coins, Flame, Globe, Laptop, Layers, Loader2, Lock, RefreshCw, Terminal
 } from 'lucide-react';
 import { GitHubMark, LogoMark, ToolMark, TOOL_MARKS } from '@/components/brand';
 import { CopyCommand } from '@/components/copy-command';
@@ -675,54 +675,44 @@ function ClaimForm({ id, handle, onChange }: { id: string; handle: string; onCha
     window.location.assign(`/login?handle=${encodeURIComponent(handle)}`);
   };
   const host = useHost();
-  const hint =
-    check.state === 'ok' ? <><Check className="size-3.5 text-[var(--series-3)]" />@{handle} is available</>
-      : check.state === 'bad' ? <><X className="size-3.5 text-destructive" />{check.reason ?? 'Not available'}</>
-        : null;
   return (
     <div className="grid w-full max-w-xl grid-cols-1 gap-4">
-      <div className="grid gap-2">
-        <form
-          action="/login"
-          onSubmit={claim}
-          className={cn(
-            'flex overflow-hidden rounded-xl border bg-card shadow-xs transition-colors focus-within:ring-1',
-            check.state === 'bad' ? 'border-destructive/60 focus-within:ring-destructive/30' : 'focus-within:border-ring focus-within:ring-ring/40',
-          )}
-        >
-          <label htmlFor={id} className="flex min-w-0 flex-1 items-stretch">
-            <span className="flex shrink-0 items-center border-r bg-surface-2 px-3 font-mono text-sm text-muted-foreground">
-              <span className="hidden sm:inline font-medium">{host}/</span>@
-            </span>
-            <input
-              id={id}
-              name="handle"
-              value={handle}
-              onChange={(e) => onChange(cleanHandle(e.target.value))}
-              placeholder="yourname"
-              autoComplete="off"
-              spellCheck={false}
-              maxLength={30}
-              aria-invalid={check.state === 'bad'}
-              aria-describedby={hint ? `${id}-hint` : undefined}
-              aria-label="Username to claim"
-              className="min-w-0 flex-1 bg-transparent px-3 py-2.5 font-mono text-sm text-foreground outline-none placeholder:text-subtle"
-            />
-            <span className="flex w-6 items-center justify-center text-subtle" aria-hidden>
-              {check.state === 'checking' && !claiming && <Loader2 className="size-3.5 animate-spin" />}
-              {check.state === 'ok' && <Check className="size-3.5 text-[var(--series-3)]" />}
-            </span>
-          </label>
-          <div className="flex items-center p-1.5">
-            <Button type="submit" size="sm" className="h-8 px-3 font-semibold" disabled={check.state === 'bad' || claiming}>
-              {claiming ? <><Loader2 className="animate-spin" />Checking</> : <>Claim <ArrowRight /></>}
-            </Button>
-          </div>
-        </form>
-        <p id={`${id}-hint`} aria-live="polite" className={cn('flex min-h-4 items-center gap-1.5 px-1 text-left text-xs', check.state === 'bad' ? 'text-destructive' : 'text-muted-foreground')}>
-          {hint}
-        </p>
-      </div>
+      <form
+        action="/login"
+        onSubmit={claim}
+        className={cn(
+          'flex overflow-hidden rounded-xl border bg-card shadow-xs transition-colors focus-within:ring-1',
+          check.state === 'bad' ? 'border-destructive/60 focus-within:ring-destructive/30' : 'focus-within:border-ring focus-within:ring-ring/40',
+        )}
+      >
+        <label htmlFor={id} className="flex min-w-0 flex-1 items-stretch">
+          <span className="flex shrink-0 items-center border-r bg-surface-2 px-3 font-mono text-sm text-muted-foreground">
+            <span className="hidden sm:inline font-medium">{host}/</span>@
+          </span>
+          <input
+            id={id}
+            name="handle"
+            value={handle}
+            onChange={(e) => onChange(cleanHandle(e.target.value))}
+            placeholder="yourname"
+            autoComplete="off"
+            spellCheck={false}
+            maxLength={30}
+            aria-invalid={check.state === 'bad'}
+            aria-label="Username to claim"
+            className="min-w-0 flex-1 bg-transparent px-3 py-2.5 font-mono text-sm text-foreground outline-none placeholder:text-subtle"
+          />
+          <span className="flex w-6 items-center justify-center text-subtle" aria-hidden>
+            {check.state === 'checking' && !claiming && <Loader2 className="size-3.5 animate-spin" />}
+            {check.state === 'ok' && <Check className="size-3.5 text-[var(--series-3)]" />}
+          </span>
+        </label>
+        <div className="flex items-center p-1.5">
+          <Button type="submit" size="sm" className="h-8 px-3 font-semibold" disabled={check.state === 'bad' || claiming}>
+            {claiming ? <><Loader2 className="animate-spin" />Checking</> : <>Claim <ArrowRight /></>}
+          </Button>
+        </div>
+      </form>
       <OrDivider />
       <CopyCommand command={INSTALL} className="w-full py-2 text-left" />
     </div>
