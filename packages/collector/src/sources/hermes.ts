@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { UsageRecord } from '../../../shared/src/index.ts';
+import { isoFromMs, type UsageRecord } from '../../../shared/src/index.ts';
 import { existingDirs } from '../paths.ts';
 import type { Store } from '../store.ts';
 import { columns, hasTable, nonNeg, openReadOnly, shortHash } from './sqlite.ts';
@@ -78,7 +78,8 @@ export function scanHermes(store: Store, ctx: SourceContext): ScanStats {
           const rec: UsageRecord = {
             provider: 'hermes',
             model_id: String(r.model),
-            occurred_at: new Date(r.last_seen * 1000).toISOString(),
+            // Garbled last_seen (say milliseconds where seconds belong): date the delta now rather than crash the scan.
+            occurred_at: isoFromMs(r.last_seen * 1000) ?? new Date().toISOString(),
             session_id: r.session_id ? String(r.session_id) : null,
             input_tokens: delta.input_tokens,
             output_tokens: delta.output_tokens,

@@ -51,7 +51,13 @@ async function setUsernameFor(env: Env, userId: string, raw: unknown) {
   if (RESERVED.has(name)) throw new HttpError(400, 'That username is reserved');
   if (await env.DB.prepare('SELECT 1 FROM users WHERE username = ? AND id != ?').bind(name, userId).first()) throw new HttpError(409, 'That username is taken');
   const old = await env.DB.prepare('SELECT username FROM users WHERE id = ?').bind(userId).first<{ username: string | null }>();
-  await env.DB.prepare('UPDATE users SET username = ? WHERE id = ?').bind(name, userId).run();
+  try {
+    await env.DB.prepare('UPDATE users SET username = ? WHERE id = ?').bind(name, userId).run();
+  } catch (e) {
+    // Someone claimed it between the check above and this write (usernames are UNIQUE).
+    if (/UNIQUE.*users\.username/.test(String(e))) throw new HttpError(409, 'That username is taken');
+    throw e;
+  }
   await purgePublic(old?.username, name);
   return name;
 }
@@ -87,6 +93,12 @@ async function deleteDataFor(env: Env, userId: string, provider: string) {
     // never ends up with only the days that happened to change after a deletion.
     env.DB.prepare('UPDATE users SET data_reset_at = ? WHERE id = ?').bind(now(), userId),
   ]);
+  await purgeUser(env, userId);
+}
+
+/** Drops this user's cached public profile, so deleted usage doesn't linger on it. */
+async function purgeUser(env: Env, userId: string) {
+  await purgePublic((await env.DB.prepare('SELECT username FROM users WHERE id = ?').bind(userId).first<{ username: string | null }>())?.username);
 }
 
 /** Deletes an account. Usage rows go first by user_id (their PK prefix) to avoid a device_id cascade scan. */
@@ -193,6 +205,7 @@ const apiUpdateProfile: Route = async (req, env) => json(await updateProfileFor(
 const apiDeleteDevice: Route = async (req, env, p) => {
   const d = await requireDevice(req, env);
   if (!(await deleteDeviceAndData(env, d.user_id, p.id))) throw new HttpError(404, 'Device not found');
+  await purgeUser(env, d.user_id);
   return json({ ok: true });
 };
 
@@ -408,8 +421,6 @@ async function publicProfile(env: Env, username: string, since: string): Promise
   const daily = await dailyRows(env, row.id, since);
   const shows = { tokens: !!row.show_token_totals, costs: !!row.show_costs, streaks: !!row.show_streaks };
   const out: PublicProfile = { username: row.username, display_name: row.display_name, since, shows };
-  // When tracking started is activity information: only shared alongside the daily trend or streaks.
-  if (row.show_daily_trend || row.show_streaks) out.first_day = daily.reduce<string | null>((min, r) => (min === null || r.day < min ? r.day : min), null);
   if (row.show_github) out.github = { login: row.github_login, avatar_url: `/api/avatar/${row.username}` };
   const pick = (r: any) => ({
     ...(row.show_providers ? { provider: r.provider, usage_source: r.usage_source } : {}),
@@ -419,6 +430,9 @@ async function publicProfile(env: Env, username: string, since: string): Promise
   });
   // One history read serves both the contribution graph (past year) and the streak highlights.
   const history = row.show_daily_trend || shows.tokens || shows.costs || shows.streaks ? await allTimeDays(env, row.id) : [];
+  // When tracking started is activity information: only shared alongside the daily trend or streaks. Taken from the
+  // full history, not the 90-day window, so long-time users don't all appear to have started 90 days ago.
+  if (row.show_daily_trend || row.show_streaks) out.first_day = history.reduce<string | null>((min, r) => (min === null || r.day < min ? r.day : min), null);
   if (row.show_daily_trend) {
     out.daily = daily.map((r) => ({ day: r.day, events: r.events, ...pick(r) }));
     out.contributions = contributionDays(history, shows.tokens);
@@ -478,7 +492,7 @@ async function githubAvatar(githubId: number, cacheControl: string): Promise<Res
 
 /**
  * GitHub avatar for a public profile that shows its GitHub account, served same-origin so the page's CSP stays
- * 'self' and viewers' browsers never contact GitHub. Cached for an hour; purged at the edge on profile changes.
+ * 'self' and viewers' browsers never contact GitHub. Cached for 5 minutes; purged at the edge on profile changes.
  */
 const publicAvatar: Route = async (req, env, p, ctx) => {
   const key = avatarCacheKey(p.username);
@@ -488,7 +502,8 @@ const publicAvatar: Route = async (req, env, p, ctx) => {
     'SELECT u.github_id FROM users u JOIN profiles p ON p.user_id = u.id WHERE u.username = ? AND p.is_public = 1 AND p.show_github = 1',
   ).bind(p.username.toLowerCase()).first<{ github_id: number }>();
   if (!row) throw new HttpError(404, 'Not found');
-  const res = await githubAvatar(row.github_id, 'public, max-age=3600');
+  // 5 minutes: purges only reach one edge location, so this bounds how long an avatar outlives unpublishing.
+  const res = await githubAvatar(row.github_id, 'public, max-age=300');
   if (!res) throw new HttpError(404, 'Not found');
   const put = caches.default.put(key, res.clone()).catch(() => {});
   if (ctx) ctx.waitUntil(put); else await put;
@@ -591,6 +606,7 @@ const webUpdateProfile: Route = async (req, env) => json(await updateProfileFor(
 const webDeleteDevice: Route = async (req, env, p) => {
   const u = await requireWebUser(req, env);
   if (!(await deleteDeviceAndData(env, u.id, p.id))) throw new HttpError(404, 'Device not found');
+  await purgeUser(env, u.id);
   return json({ ok: true });
 };
 

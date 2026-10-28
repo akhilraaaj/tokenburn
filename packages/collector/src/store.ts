@@ -101,7 +101,9 @@ export class Store {
   }
 
   transaction<T>(fn: () => T): T {
-    this.db.exec('BEGIN');
+    // IMMEDIATE takes the write lock up front: a deferred BEGIN that reads, then writes, fails with SQLITE_BUSY at
+    // once if another process committed in between, instead of waiting out the busy timeout.
+    this.db.exec('BEGIN IMMEDIATE');
     try {
       const r = fn();
       this.db.exec('COMMIT');
@@ -134,14 +136,19 @@ export class Store {
   }
 
   /** Set whenever local usage changes; sync skips planning and uploading while it's clear. */
+  // A change counter rather than a flag: a sync records the count it planned from and clears only up to it, so
+  // events written while it was uploading (a manual sync, a config change) keep the store dirty for the next run.
   markDirty() {
-    this.setMeta('plan_dirty', '1');
+    this.setMeta('plan_dirty', String(this.dirtyGeneration() + 1));
+  }
+  dirtyGeneration() {
+    return Number(this.getMeta('plan_dirty') ?? 0) || 0;
   }
   isDirty() {
-    return this.getMeta('plan_dirty') === '1';
+    return this.dirtyGeneration() !== (Number(this.getMeta('plan_clean') ?? 0) || 0);
   }
-  clearDirty() {
-    this.setMeta('plan_dirty', '0');
+  clearDirty(generation: number) {
+    this.setMeta('plan_clean', String(generation));
   }
 
   /** Freezes API list-price estimates for events that don't have one yet. Returns how many were priced. */

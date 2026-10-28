@@ -57,7 +57,7 @@ function ProfileActions({ username, preview }: { username: string; preview: bool
   const own = !preview && user?.username === username;
   return (
     <div className="flex shrink-0 items-center gap-2 self-start">
-      <ShareButton url={`${window.location.origin}/@${username}`} />
+      {!preview && <ShareButton url={`${window.location.origin}/@${username}`} />}
       {own && (
         <Button asChild size="sm" aria-label="Edit profile">
           <Link to="/dashboard/settings"><Pencil /><span className="max-sm:sr-only">Edit profile</span></Link>
@@ -203,6 +203,8 @@ function ProfileBody({ handle }: { handle: string }) {
  * data shaped by the same switches as Settings (`preview`), so both always look the same.
  */
 export function ProfileView({ profile, preview = false }: { profile: PublicProfile; preview?: boolean }) {
+  // Inside the landing page's preview the page already has its h1.
+  const Heading = preview ? 'h2' : 'h1';
   const { user } = useSession();
   const breakdown = profile.breakdown ?? [];
   const colorOf = useMemo(() => colorMap(profile.daily?.length ? profile.daily : breakdown), [profile]);
@@ -238,7 +240,7 @@ export function ProfileView({ profile, preview = false }: { profile: PublicProfi
         </Avatar>
         <div className="grid min-w-0 flex-1 gap-2">
           <div className="grid gap-1">
-            <h1 className="truncate text-lg font-semibold leading-tight sm:text-xl">{name}</h1>
+            <Heading className="truncate text-lg font-semibold leading-tight sm:text-xl">{name}</Heading>
             <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[13px] text-muted-foreground font-medium">
               <span>@{profile.username}</span>
               {profile.github && (

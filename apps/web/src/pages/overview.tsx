@@ -1,15 +1,16 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Info } from 'lucide-react';
 import { Pills } from '@/components/pills';
-import { AreaChart, perDay } from '@/components/profile-widgets';
+import { perDay } from '@/components/profile-widgets';
 import { ToolCard } from '@/components/stats';
 import { UsageChart } from '@/components/usage-chart';
+import { KpiCard, streakRuns } from '@/components/kpi-card';
 import { WelcomeScreen } from '@/components/welcome-screen';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDashboard, type Range } from '@/layouts/app-layout';
 import { compact, dayLabel, fmt, plural, usd } from '@/lib/format.ts';
-import { colorMap, daysFrom, METRIC_LABEL, providerLabel, rowTokens, type Metric, type Row } from '@/lib/series.ts';
+import { colorMap, METRIC_LABEL, providerLabel, rowTokens, type Metric } from '@/lib/series.ts';
 
 export const RANGES: [Range, string][] = [['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['365', '1 year']];
 
@@ -114,36 +115,5 @@ export function Overview() {
         Estimated cost uses billed or tool-reported cost when available, otherwise public API list prices. It isn't what a subscription costs.
       </p>
     </>
-  );
-}
-
-/** Running streak length per day: climbs on active days, drops to zero on quiet ones. */
-export function streakRuns(rows: Row[], since: string) {
-  const active = new Set(rows.filter((r) => r.events > 0).map((r) => r.day!));
-  let run = 0;
-  return daysFrom(since).map((day) => ({ label: dayLabel(day), value: (run = active.has(day) ? run + 1 : 0) }));
-}
-
-/** A headline number with its daily sparkline, in the same style as the public profile's trend cards. */
-export function KpiCard({ label, value, title, hint, points, color, format }: {
-  label: string;
-  value: string;
-  title?: string;
-  hint: string;
-  points: { label: string; value: number }[];
-  color: string;
-  format: (v: number) => string;
-}) {
-  return (
-    <Card className="gap-3 pb-0">
-      <CardHeader className="gap-1">
-        <CardDescription>{label}</CardDescription>
-        <CardTitle className="num text-xl font-semibold sm:text-2xl" title={title}>{value}</CardTitle>
-        <span className="truncate text-xs text-subtle font-medium">{hint}</span>
-      </CardHeader>
-      <CardContent className="mt-auto px-0">
-        <AreaChart height={48} points={points} color={color} format={format} />
-      </CardContent>
-    </Card>
   );
 }

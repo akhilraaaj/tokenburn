@@ -125,3 +125,9 @@ export function validateRecord(r: unknown): string | null {
   }
   return null;
 }
+
+/** ISO-8601 for a millisecond timestamp, or null when it's out of range (new Date(...).toISOString() would throw). */
+export function isoFromMs(ms: number): string | null {
+  const d = new Date(ms);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}

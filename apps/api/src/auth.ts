@@ -108,6 +108,11 @@ export async function upsertUser(env: Env, githubId: number, githubLogin: string
   try {
     await insert(username);
   } catch (e) {
+    // The same GitHub user signing up twice at once (a double click): the other request created the account.
+    if (/UNIQUE.*users\.github_id/.test(String(e))) {
+      const won = await env.DB.prepare('SELECT id FROM users WHERE github_id = ?').bind(githubId).first<{ id: string }>();
+      if (won) return { id: won.id, created: false };
+    }
     // Someone took the same name between the check and the insert (usernames are UNIQUE): start without one.
     // Any other failure (say the same GitHub user signing up twice at once) is a real error.
     if (!username || !/UNIQUE.*users\.username/.test(String(e))) throw e;

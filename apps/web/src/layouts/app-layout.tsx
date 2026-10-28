@@ -5,6 +5,7 @@ import type { DashboardData } from '../../../../packages/shared/src/index.ts';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { LogoMark } from '@/components/brand';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -112,6 +113,7 @@ export function AppLayout() {
 
   return (
     <DashboardContext.Provider value={dashboard}>
+      <TooltipProvider>
       <SidebarProvider>
         <CloseMobileSidebarOnNavigate />
         <Sidebar collapsible="icon" variant="inset">
@@ -224,6 +226,7 @@ export function AppLayout() {
           </div>
         </SidebarInset>
       </SidebarProvider>
+      </TooltipProvider>
     </DashboardContext.Provider>
   );
 }

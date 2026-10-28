@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { BillingMode, UsageRecord } from '../../../shared/src/index.ts';
+import { isoFromMs, type BillingMode, type UsageRecord } from '../../../shared/src/index.ts';
 import { existingDirs, listFiles } from '../paths.ts';
 import type { Store } from '../store.ts';
 import { columns, hasTable, nonNeg, openReadOnly } from './sqlite.ts';
@@ -24,14 +24,15 @@ export function openCodeMessageToRecord(id: string, sessionId: string | null, da
   const model = typeof data.model?.id === 'string' ? data.model.id : typeof data.modelID === 'string' ? data.modelID : null;
   const providerID = typeof data.model?.providerID === 'string' ? data.model.providerID : typeof data.providerID === 'string' ? data.providerID : null;
   const created = typeof data.time?.created === 'number' ? data.time.created : null;
-  if (!model || created === null) return null;
+  const occurred = created === null ? null : isoFromMs(created);
+  if (!model || occurred === null) return null; // a garbled time is malformed, not a crash
   const input = nonNeg(t.input), output = nonNeg(t.output), reasoning = nonNeg(t.reasoning);
   const cacheRead = nonNeg(t.cache?.read), cacheWrite = nonNeg(t.cache?.write);
   if (!input && !output && !reasoning && !cacheRead && !cacheWrite) return null;
   return {
     provider: 'opencode',
     model_id: model,
-    occurred_at: new Date(created).toISOString(),
+    occurred_at: occurred,
     session_id: sessionId,
     input_tokens: input,
     output_tokens: output === null ? null : output + (reasoning ?? 0),

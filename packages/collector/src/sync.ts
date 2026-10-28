@@ -24,6 +24,15 @@ export interface SyncPlan {
   hashes: { buckets: [string, string][]; sessions: [string, string][]; deletedBuckets: string[] };
 }
 
+/**
+ * Whether the server will accept a day: from 2020-01-01 to tomorrow (UTC), the same window it validates. A row from a
+ * wrong system clock or a garbled timestamp in a tool's log is left out of the upload instead of failing the whole
+ * batch, which would otherwise block every sync from this machine.
+ */
+export function uploadableDay(day: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) && day >= '2020-01-01' && Date.parse(day + 'T00:00:00Z') <= Date.now() + 864e5;
+}
+
 export function planSync(store: Store, cfg: Config, prices: PriceTable = {}): SyncPlan {
   const local = store.eventsIn(USAGE_SOURCES.filter((u) => SOURCES[u].scope === 'device'));
   const { buckets, sessions } = aggregateDaily(local, (s) => SOURCES[s].sessions, prices);
@@ -34,6 +43,7 @@ export function planSync(store: Store, cfg: Config, prices: PriceTable = {}): Sy
   const hb: [string, string][] = [];
   const present = new Set<string>();
   for (const b of buckets) {
+    if (!uploadableDay(b.day)) continue; // see uploadableDay
     const k = bucketKey(b);
     present.add(k);
     const h = sha(JSON.stringify(b));
@@ -51,6 +61,7 @@ export function planSync(store: Store, cfg: Config, prices: PriceTable = {}): Sy
   const sessionUpserts: SessionUpload[] = [];
   const hs: [string, string][] = [];
   for (const s of sessions) {
+    if (!uploadableDay(s.first_at.slice(0, 10)) || !uploadableDay(s.last_at.slice(0, 10))) continue;
     const session_key = sha(cfg.session_salt + '\u0001' + s.provider + '\u0001' + s.session_id).slice(0, 32);
     const up = { provider: s.provider, session_key, first_at: s.first_at, last_at: s.last_at, event_count: s.event_count };
     const h = sha(JSON.stringify(up));
@@ -144,6 +155,7 @@ export async function runSync(
   }
   // A device's very first upload already sends everything, so a reset marker seen then needs no re-upload.
   const firstUpload = store.uploadedHashes('uploaded_buckets').size === 0;
+  const generation = store.dirtyGeneration(); // what this run uploads; later writes stay pending
   const plan = planSync(store, cfg, prices);
   let accountInserted = 0;
   let accountDuplicates = 0;
@@ -184,7 +196,7 @@ export async function runSync(
     store.markSynced(chunk.map((e) => e.dedupe_key), at);
   }
   store.setMeta('last_sync_at', at);
-  store.clearDirty();
+  store.clearDirty(generation);
   return {
     buckets: plan.bucketUpserts.length,
     deletedBuckets: plan.bucketDeletes.length,

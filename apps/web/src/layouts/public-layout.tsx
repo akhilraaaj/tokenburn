@@ -68,11 +68,12 @@ export function PublicLayout() {
           )}
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            {!loading && (user ? (
+            {/* While the session loads, an invisible Sign in holds the space so the header doesn't shift when it lands. */}
+            {user ? (
               <Button asChild size="sm"><Link to="/dashboard">Dashboard</Link></Button>
             ) : (
-              <Button asChild size="sm"><a href="/login">Sign in with GitHub</a></Button>
-            ))}
+              <Button asChild size="sm" className={cn(loading && 'invisible')} aria-hidden={loading || undefined}><a href="/login" tabIndex={loading ? -1 : undefined}>Sign in with GitHub</a></Button>
+            )}
           </div>
         </div>
       </header>
@@ -160,9 +161,8 @@ function SiteFooter({ signedIn }: { signedIn: boolean }) {
         <span>© {new Date().getFullYear()} tokenburn</span>
         <span>Usage is collected locally · costs are API list-price estimates</span>
       </div>
-      <div aria-hidden className="pointer-events-none mb-[-0.24em] text-center text-[clamp(4rem,19vw,15rem)] leading-none font-semibold tracking-tighter text-foreground/[0.04] select-none">
-        tokenburn
-      </div>
+      {/* Drawn with ::after so the decorative wordmark isn't page text (screen readers, contrast checks). */}
+      <div aria-hidden className="pointer-events-none mb-[-0.24em] text-center text-[clamp(4rem,19vw,15rem)] leading-none font-semibold tracking-tighter text-foreground/[0.04] select-none after:content-['tokenburn']" />
     </footer>
   );
 }

@@ -1,0 +1,7 @@
+# tokenburn
+
+> tokenburn tracks AI coding usage across tools (Claude Code, Codex CLI, Cursor, Gemini CLI, OpenCode, Grok CLI, Hermes Agent, OpenRouter). A small CLI reads each tool's local usage logs and syncs only daily token totals; prompts and code never leave the machine. Users get a private dashboard and an optional public profile at /@username.
+
+- Install: `npm install -g use-tokenburn && tokenburn setup`
+- Public profile data: GET /api/public/{username} (JSON, only fields the owner chose to show)
+- Costs are estimates at public API list prices, labeled by source (billed, tool estimate or list price)

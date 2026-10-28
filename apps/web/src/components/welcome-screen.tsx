@@ -32,7 +32,7 @@ export function WelcomeScreen({ origin }: { origin: string }) {
     <div className="mx-auto grid w-full max-w-2xl grid-cols-1 gap-10 py-4 sm:py-10">
       <header className="grid justify-items-start gap-4">
         <span className="inline-flex items-center gap-2 rounded-full border bg-card py-1 pr-3 pl-1 text-xs text-muted-foreground font-medium">
-          <span className="rounded-full bg-[color-mix(in_oklab,var(--series-2)_12%,transparent)] px-2 py-0.5 font-medium text-(--series-2)">
+          <span className="rounded-full bg-[color-mix(in_oklab,var(--series-2)_12%,transparent)] px-2 py-0.5 font-medium text-[color-mix(in_oklab,var(--series-2)_72%,var(--foreground))]">
             Step {current} of 3
           </span>
           Getting started
@@ -117,8 +117,8 @@ function Step({ n, title, description, state, optional, last, children }: {
         <span
           className={cn(
             'num z-[1] flex size-8 flex-none items-center justify-center rounded-full text-sm font-medium transition-colors duration-300',
-            state === 'done' && 'bg-[var(--series-2)] text-white',
-            state === 'active' && 'bg-[var(--series-2)] text-white ring-[6px] ring-[color-mix(in_oklab,var(--series-2)_16%,transparent)] dark:ring-[color-mix(in_oklab,var(--series-2)_26%,transparent)]',
+            state === 'done' && 'bg-[var(--series-2)] text-[#1c0c04]',
+            state === 'active' && 'bg-[var(--series-2)] text-[#1c0c04] ring-[6px] ring-[color-mix(in_oklab,var(--series-2)_16%,transparent)] dark:ring-[color-mix(in_oklab,var(--series-2)_26%,transparent)]',
             state === 'next' && 'border-2 bg-background text-subtle',
           )}
         >

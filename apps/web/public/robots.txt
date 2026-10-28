@@ -1,0 +1,8 @@
+# Landing page and public profiles (/@username) are crawlable; the signed-in app, API and sign-in are not.
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /api/
+Disallow: /auth/
+Disallow: /login
+Disallow: /welcome

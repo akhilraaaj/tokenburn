@@ -4,6 +4,9 @@ import path from 'node:path';
 import { stateDir } from './paths.ts';
 
 const lockFile = () => path.join(stateDir(), 'sync.lock');
+// A sync never legitimately holds the lock this long. Past it, the lock is reclaimed even if its PID looks alive:
+// after a crash and a reboot, that PID can belong to an unrelated process and would otherwise block syncs forever.
+const MAX_LOCK_AGE_MS = 2 * 3600e3;
 
 function alive(pid: number): boolean {
   try {
@@ -19,22 +22,26 @@ export function acquireLock(): (() => void) | null {
   fs.mkdirSync(stateDir(), { recursive: true, mode: 0o700 });
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      fs.writeFileSync(lockFile(), String(process.pid), { flag: 'wx', mode: 0o600 });
+      const mine = `${process.pid} ${Date.now()}`;
+      fs.writeFileSync(lockFile(), mine, { flag: 'wx', mode: 0o600 });
       let released = false;
       const release = () => {
         if (released) return;
         released = true;
         try {
-          if (fs.readFileSync(lockFile(), 'utf8') === String(process.pid)) fs.rmSync(lockFile());
+          if (fs.readFileSync(lockFile(), 'utf8') === mine) fs.rmSync(lockFile());
         } catch {}
       };
       process.once('exit', release);
       return release;
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-      const pid = Number(fs.readFileSync(lockFile(), 'utf8').trim());
-      if (pid && pid !== process.pid && alive(pid)) return null;
-      fs.rmSync(lockFile(), { force: true }); // holder crashed: reclaim
+      // "pid takenAtMs" (older versions wrote only the pid, so their age is unknown and only liveness counts).
+      const [pidText, takenText] = fs.readFileSync(lockFile(), 'utf8').trim().split(' ');
+      const pid = Number(pidText);
+      const fresh = !takenText || Date.now() - Number(takenText) < MAX_LOCK_AGE_MS;
+      if (pid && pid !== process.pid && alive(pid) && fresh) return null;
+      fs.rmSync(lockFile(), { force: true }); // holder crashed or is long gone: reclaim
     }
   }
   return null;

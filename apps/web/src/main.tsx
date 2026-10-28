@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client';
 import { createBrowserRouter, Navigate, RouterProvider, useLocation } from 'react-router-dom';
 import './index.css';
 import { Toaster } from '@/components/ui/sonner';
-import { TooltipProvider } from '@/components/ui/tooltip';
 import { PublicLayout } from '@/layouts/public-layout';
 import { Landing } from '@/pages/landing';
 import { NotFound } from '@/pages/not-found';
@@ -52,10 +51,8 @@ const router = createBrowserRouter([
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <SessionProvider>
-      <TooltipProvider>
-        <RouterProvider router={router} />
-        <Toaster position="bottom-right" />
-      </TooltipProvider>
+      <RouterProvider router={router} />
+      <Toaster position="bottom-right" />
     </SessionProvider>
   </StrictMode>,
 );

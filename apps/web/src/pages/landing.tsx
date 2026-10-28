@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { memo, useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -21,7 +21,7 @@ import { cn } from '@/lib/utils';
 import { AreaChart, perDay } from '@/components/profile-widgets';
 import { useSession } from '@/session';
 import { checkUsernameNow, useUsernameCheck, type UsernameCheck } from '@/lib/username-check';
-import { KpiCard, streakRuns } from './overview';
+import { KpiCard, streakRuns } from '@/components/kpi-card';
 import { ProfileHeader, ProfileView } from './profile';
 
 const INSTALL = 'npm install -g use-tokenburn && tokenburn setup';
@@ -225,7 +225,8 @@ function MiniContributions() {
   );
 }
 
-const cleanHandle = (s: string) => s.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 24);
+// Same characters and length the server accepts for usernames (USERNAME_RE in apps/api/src/auth.ts).
+const cleanHandle = (s: string) => s.toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 30);
 
 /**
  * A GitHub-style identicon for the signed-out demo profile: a mirrored 5×5 pixel pattern in one brand color,
@@ -257,7 +258,9 @@ export function Landing() {
   const example = useMemo(exampleRows, []);
   const colorOf = useMemo(() => colorMap(example.rows), [example]);
   const [handle, setHandle] = useState('');
-  const shown = user?.username ?? (handle || 'yourname');
+  // The demos follow the typed handle at low priority, so typing stays instant while they re-render behind it.
+  const deferredHandle = useDeferredValue(handle);
+  const shown = user?.username ?? (deferredHandle || 'yourname');
   const [shows, setShows] = useState(DEFAULT_SHOWS);
   // Signed in, the example profile wears the visitor's own GitHub avatar (their numbers stay examples); signed out,
   // an identicon made from the handle they're typing.
@@ -321,11 +324,12 @@ export function Landing() {
 
         {/* Hero + product preview, kept close so the dashboard shows on the first screen */}
         <div className="grid grid-cols-1 gap-10 sm:gap-12">
-          <section className="grid grid-cols-1 justify-items-center gap-6 text-center animate-in fade-in slide-in-from-bottom-3 duration-700">
+          {/* Slides in but never starts transparent: the h1 is the largest paint, and fading it in delays LCP. */}
+          <section className="grid grid-cols-1 justify-items-center gap-6 text-center motion-safe:animate-in motion-safe:slide-in-from-bottom-3 motion-safe:duration-700">
             <span className="inline-flex items-center gap-2.5 rounded-full border bg-card py-1 pr-3.5 pl-1 text-xs text-muted-foreground shadow-xs font-medium">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-[color-mix(in_oklab,var(--series-2)_12%,transparent)] px-2 py-0.5 font-medium text-[var(--series-2)]">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[color-mix(in_oklab,var(--series-2)_12%,transparent)] px-2 py-0.5 font-medium text-[color-mix(in_oklab,var(--series-2)_72%,var(--foreground))]">
                 <span className="relative flex size-1.5">
-                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--series-2)] opacity-60" />
+                  <span className="absolute inline-flex size-full rounded-full bg-[var(--series-2)] opacity-60 motion-safe:animate-ping" />
                   <span className="relative inline-flex size-1.5 rounded-full bg-[var(--series-2)]" />
                 </span>
                 Local-first
@@ -344,7 +348,7 @@ export function Landing() {
 
           {/* Product preview + tools */}
           <section className="grid grid-cols-1 gap-16 animate-in fade-in slide-in-from-bottom-6 sm:gap-20 duration-1000">
-            <HeroDashboard rows={example.rows} since={example.since} colorOf={colorOf} handle={shown} labeled={!!user} />
+            <HeroDashboard rows={example.rows} since={example.since} colorOf={colorOf} labeled={!!user} />
             <div className="grid gap-6">
               <p className="text-center text-xs font-medium tracking-widest text-subtle uppercase">Works with the tools you already use</p>
               <div className="marquee overflow-hidden">
@@ -379,57 +383,7 @@ export function Landing() {
           <div className="grid lg:hidden"><ProfileCta /></div>
         </section>
 
-        {/* Features */}
-        <section id="features" className="grid scroll-mt-24 grid-cols-1 gap-10 sm:gap-12">
-          <SectionHeading
-            label="Features"
-            icon={BarChart3}
-            title="Everything you'd want to know, nothing you wouldn't share"
-            sub="One place for every AI coding tool, built for developers who live in the terminal."
-          />
-          <div className="grid gap-5 md:grid-cols-6 lg:gap-6">
-            <Tile className="md:col-span-4" icon={BarChart3} label="Activity" accent="var(--series-2)" title="Watch the tokens fly" body="Tokens, requests and cost stacked by day and by model, so you see what actually moved. Your biggest day gets its own spotlight.">
-              <div className="grid gap-3">
-                <div className="flex gap-1 text-[0.7rem]">
-                  {['Tokens', 'Requests', 'Cost'].map((l, i) => (
-                    <span key={l} className={cn('rounded-md px-2 py-0.5', i === 0 ? 'bg-surface-2 text-foreground' : 'text-subtle')}>{l}</span>
-                  ))}
-                </div>
-                <AreaChart height={92} points={FEATURE_TREND} color="var(--series-2)" format={(v) => `${compact(v)} tokens`} xLabels={['30 days ago', 'Today']} />
-              </div>
-            </Tile>
-            <Tile className="md:col-span-2" icon={Flame} label="Streaks" accent="var(--series-4)" title="Don't break the chain" body="Any tool, any day keeps it alive. Then go chase your longest run.">
-              <AreaChart height={92} points={FEATURE_STREAK} color="var(--series-4)" format={(v) => (v ? `Day ${v} of a streak` : 'No usage')} xLabels={['30 days ago', 'Today']} />
-            </Tile>
-            <Tile className="md:col-span-3" icon={CalendarDays} label="Heatmap" accent="var(--tb-brand)" title="Your year, square by square" body="A GitHub-style heatmap of every day you built with AI, across every tool you use, all year long.">
-              <MiniContributions />
-            </Tile>
-            <Tile className="md:col-span-3" icon={Layers} label="Models" accent="var(--series-7)" title="Know your heavy lifters" body="See which models actually do the work. Rank by tokens, requests or cost, then dive into any one.">
-              <div className="grid gap-3.5">
-                {MIX.slice(0, 3).map((m) => (
-                  <div key={m.name} className="grid gap-1">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="inline-flex items-center gap-1.5"><span className="swatch" style={{ background: m.color }} />{m.name}</span>
-                      <span className="num text-subtle">{m.share}%</span>
-                    </div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
-                      <div className="h-full rounded-full" style={{ width: `${m.share}%`, background: m.color }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Tile>
-            <Tile className="md:col-span-2" icon={Terminal} label="Local-first" accent="var(--series-3)" title="Your code stays home" body="A tiny CLI reads usage logs right on your machine. Prompts and code never leave it.">
-              <MiniCollect />
-            </Tile>
-            <Tile className="md:col-span-2" icon={RefreshCw} label="Auto sync" accent="var(--series-1)" title="Set it and forget it" body="A quick sync every 30 minutes, run by your OS. Nothing humming in the background.">
-              <MiniSyncs />
-            </Tile>
-            <Tile className="md:col-span-2" icon={Coins} label="Costs" accent="var(--series-5)" title="No mystery math" body="Billed where providers report it, list price where they don't. Always labeled.">
-              <MiniCosts />
-            </Tile>
-          </div>
-        </section>
+        <FeaturesSection />
 
         {/* How it works */}
         <section id="how" className="grid scroll-mt-24 grid-cols-1 gap-10 sm:gap-12">
@@ -602,6 +556,62 @@ function ToolStack() {
   );
 }
 
+/** The features bento. It depends on nothing typed on the page, so it's memoized out of the handle re-renders. */
+const FeaturesSection = memo(function FeaturesSection() {
+  return (
+  <section id="features" className="grid scroll-mt-24 grid-cols-1 gap-10 sm:gap-12">
+    <SectionHeading
+      label="Features"
+      icon={BarChart3}
+      title="Everything you'd want to know, nothing you wouldn't share"
+      sub="One place for every AI coding tool, built for developers who live in the terminal."
+    />
+    <div className="grid gap-5 md:grid-cols-6 lg:gap-6">
+      <Tile className="md:col-span-4" icon={BarChart3} label="Activity" accent="var(--series-2)" title="Watch the tokens fly" body="Tokens, requests and cost stacked by day and by model, so you see what actually moved. Your biggest day gets its own spotlight.">
+        <div className="grid gap-3">
+          <div className="flex gap-1 text-[0.7rem]">
+            {['Tokens', 'Requests', 'Cost'].map((l, i) => (
+              <span key={l} className={cn('rounded-md px-2 py-0.5', i === 0 ? 'bg-surface-2 text-foreground' : 'text-subtle')}>{l}</span>
+            ))}
+          </div>
+          <AreaChart height={92} points={FEATURE_TREND} color="var(--series-2)" format={(v) => `${compact(v)} tokens`} xLabels={['30 days ago', 'Today']} />
+        </div>
+      </Tile>
+      <Tile className="md:col-span-2" icon={Flame} label="Streaks" accent="var(--series-4)" title="Don't break the chain" body="Any tool, any day keeps it alive. Then go chase your longest run.">
+        <AreaChart height={92} points={FEATURE_STREAK} color="var(--series-4)" format={(v) => (v ? `Day ${v} of a streak` : 'No usage')} xLabels={['30 days ago', 'Today']} />
+      </Tile>
+      <Tile className="md:col-span-3" icon={CalendarDays} label="Heatmap" accent="var(--tb-brand)" title="Your year, square by square" body="A GitHub-style heatmap of every day you built with AI, across every tool you use, all year long.">
+        <MiniContributions />
+      </Tile>
+      <Tile className="md:col-span-3" icon={Layers} label="Models" accent="var(--series-7)" title="Know your heavy lifters" body="See which models actually do the work. Rank by tokens, requests or cost, then dive into any one.">
+        <div className="grid gap-3.5">
+          {MIX.slice(0, 3).map((m) => (
+            <div key={m.name} className="grid gap-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="inline-flex items-center gap-1.5"><span className="swatch" style={{ background: m.color }} />{m.name}</span>
+                <span className="num text-subtle">{m.share}%</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
+                <div className="h-full rounded-full" style={{ width: `${m.share}%`, background: m.color }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </Tile>
+      <Tile className="md:col-span-2" icon={Terminal} label="Local-first" accent="var(--series-3)" title="Your code stays home" body="A tiny CLI reads usage logs right on your machine. Prompts and code never leave it.">
+        <MiniCollect />
+      </Tile>
+      <Tile className="md:col-span-2" icon={RefreshCw} label="Auto sync" accent="var(--series-1)" title="Set it and forget it" body="A quick sync every 30 minutes, run by your OS. Nothing humming in the background.">
+        <MiniSyncs />
+      </Tile>
+      <Tile className="md:col-span-2" icon={Coins} label="Costs" accent="var(--series-5)" title="No mystery math" body="Billed where providers report it, list price where they don't. Always labeled.">
+        <MiniCosts />
+      </Tile>
+    </div>
+  </section>
+  );
+});
+
 /** Primary call to action, depending on whether someone is signed in and has a username yet. */
 function ProfileCta() {
   const { user } = useSession();
@@ -702,6 +712,7 @@ function ClaimForm({ id, handle, onChange }: { id: string; handle: string; onCha
               maxLength={30}
               aria-invalid={check.state === 'bad'}
               aria-describedby={hint ? `${id}-hint` : undefined}
+              aria-label="Username to claim"
               className="min-w-0 flex-1 bg-transparent px-3 py-2.5 font-mono text-sm text-foreground outline-none placeholder:text-subtle"
             />
             <span className="flex w-6 items-center justify-center text-subtle" aria-hidden>
@@ -836,7 +847,7 @@ function ProfilePreview({ profile, labeled }: { profile: PublicProfile; labeled:
  * The dashboard's Overview as it really looks (top bar, stat cards, daily chart), built from the same components
  * and fed example data, so the hero always matches the app.
  */
-function HeroDashboard({ rows, since, colorOf, handle, labeled }: { rows: Row[]; since: string; colorOf: (k: string) => number; handle: string; labeled: boolean }) {
+const HeroDashboard = memo(function HeroDashboard({ rows, since, colorOf, labeled }: { rows: Row[]; since: string; colorOf: (k: string) => number; labeled: boolean }) {
   const [range, setRange] = useState<'7' | '30'>('30');
   const [metric, setMetric] = useState<Metric>('output');
   const from = range === '7' ? new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10) : since;
@@ -891,7 +902,7 @@ function HeroDashboard({ rows, since, colorOf, handle, labeled }: { rows: Row[];
       </div>
     </div>
   );
-}
+});
 
 /**
  * The setup steps as a vertical stepper beside the terminal demo. Finished steps get a check, and the line below
@@ -923,7 +934,7 @@ function HowItWorks({ handle }: { handle: string }) {
                       'num relative z-[1] flex size-9 flex-none items-center justify-center rounded-full text-sm font-medium transition-[background-color,border-color,color,box-shadow] duration-300 ease-out',
                       state === 'next'
                         ? 'border-2 bg-background text-subtle group-hover:border-foreground/30 group-hover:text-foreground'
-                        : 'bg-[var(--series-2)] text-white ring-[6px] ring-[color-mix(in_oklab,var(--series-2)_16%,transparent)] dark:ring-[color-mix(in_oklab,var(--series-2)_26%,transparent)]',
+                        : 'bg-[var(--series-2)] text-[#1c0c04] ring-[6px] ring-[color-mix(in_oklab,var(--series-2)_16%,transparent)] dark:ring-[color-mix(in_oklab,var(--series-2)_26%,transparent)]',
                     )}
                   >
                     {i + 1}
@@ -1126,7 +1137,8 @@ function TerminalDemo({ handle, step, onPlay, onAdvance }: {
   useEffect(() => {
     const el = wrap.current;
     if (!el) return;
-    const io = new IntersectionObserver(([e]) => e.isIntersecting && setVisible(true), { threshold: 0.3 });
+    // Plays only while on screen: offscreen, the typing timer and step cycle stop instead of running forever.
+    const io = new IntersectionObserver(([e]) => setVisible(e.isIntersecting), { threshold: 0.3 });
     io.observe(el);
     return () => io.disconnect();
   }, []);
@@ -1189,6 +1201,7 @@ function TerminalDemo({ handle, step, onPlay, onAdvance }: {
           'h-80 overflow-hidden p-4 font-mono text-[0.78rem] leading-relaxed sm:h-[26rem] sm:p-5',
           clipped && '[mask-image:linear-gradient(to_bottom,transparent,black_3rem)]',
         )}
+        role="region"
         aria-label={`Terminal showing ${STEPS[shown].command}`}
       >
         {/* Outer layer fades the old step out; the inner one, remounted per step, settles the new one in. */}
@@ -1223,7 +1236,7 @@ function TerminalDemo({ handle, step, onPlay, onAdvance }: {
   );
 }
 
-const Caret = () => <span className="inline-block h-3.5 w-[7px] translate-y-0.5 animate-pulse bg-[var(--term-text)]/80" />;
+const Caret = () => <span className="inline-block h-3.5 w-[7px] translate-y-0.5 bg-[var(--term-text)]/80 motion-safe:animate-pulse" />;
 
 const NEVER_UPLOADED = ['Prompts and responses', 'Source code and file paths', 'Project and machine names', 'API keys and credentials'];
 const SYNCED = ['Tokens per model, per day', 'Request counts', 'Hashed session ids', 'Cursor and OpenRouter rows'];
@@ -1337,7 +1350,7 @@ function MiniCosts() {
   return (
     <div className="flex flex-wrap gap-1.5">
       {sources.map(([label, color]) => (
-        <span key={label} className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ color, background: `color-mix(in oklab, ${color} 12%, transparent)` }}>
+        <span key={label} className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ color: `color-mix(in oklab, ${color} 72%, var(--foreground))`, background: `color-mix(in oklab, ${color} 12%, transparent)` }}>
           {label}
         </span>
       ))}

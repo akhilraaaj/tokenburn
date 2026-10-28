@@ -3,7 +3,7 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 
-/* Dark mode follows the OS: public/theme.js toggles `.dark` on <html> before first paint. */
+/* Dark by default (light when chosen): public/theme.js sets `.dark` on <html> before first paint. */
 @custom-variant dark (&:is(.dark *));
 
 /*
@@ -19,7 +19,7 @@
   --tb-grid: #ebeae6;
   --tb-text: #0b0b0b;
   --tb-text-2: #52514e;
-  --tb-text-3: #7a7974;
+  --tb-text-3: #6e6d68; /* 4.5:1+ on the page background and surface-2 */
   --tb-brand: #2a78d6;
   --tb-brand-ink: #ffffff;
   --tb-danger: #c43c3b;
@@ -60,7 +60,8 @@
   --card-foreground: var(--tb-text);
   --popover: var(--tb-surface-1);
   --popover-foreground: var(--tb-text);
-  --primary: var(--tb-brand);
+  /* Buttons need white text at 4.5:1+, so they use a slightly deeper blue than the brand accent (4.7:1). */
+  --primary: #2b72d4;
   --primary-foreground: var(--tb-brand-ink);
   --secondary: var(--tb-surface-2);
   --secondary-foreground: var(--tb-text);
