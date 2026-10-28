@@ -69,6 +69,9 @@ export const FAQ = [
   { q: "What's on a public profile?", a: 'Only what you switch on: your tools, models, token totals, a daily chart, streaks, a contribution graph and estimated cost. Each one has its own switch, and the preview above uses the same ones.' },
   { q: 'How is cost estimated?', a: "The provider's billed amount where reported (OpenRouter), otherwise the tool's own estimate, otherwise public API list prices. It is not what a subscription costs, and it's always labeled as an estimate." },
   { q: 'Does something keep running in the background?', a: 'No. Your OS runs a quick sync every 30 minutes and nothing stays running in between.' },
+  { q: 'How do I sync right now?', a: 'Run tokenburn sync in your terminal. It collects usage on this machine and uploads it immediately. After setup, auto sync does the same every 30 minutes on its own.' },
+  { q: 'How do I get help with the CLI?', a: 'Run tokenburn help or tokenburn --help for the full command list. Bare tokenburn prints the same thing: stats, sync, profile, service, and the rest.' },
+  { q: 'Does Cursor work with tokenburn?', a: "Yes. Export a CSV from cursor.com/dashboard → Usage, then drop it in your Downloads folder. With auto-import on (in setup or tokenburn cursor auto-import on), every sync picks it up. Download a fresh export about once a month. You can also import one file with tokenburn import-cursor <file.csv>." },
   { q: 'Can I delete everything?', a: 'Yes. Deleting your account in Settings removes your profile and all uploaded usage. tokenburn forget clears the local data on each machine.' },
 ];
 
