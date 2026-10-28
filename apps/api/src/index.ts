@@ -9,11 +9,12 @@ import {
 import { allTimeActivity, allTimeDays, dailyRows, highlights, sessionCounts, sinceDays } from './data.ts';
 import { activityStats, contributionDays } from '../../../packages/shared/src/activity.ts';
 import { PROFILE_FLAGS, type DashboardData, type PublicProfile } from '../../../packages/shared/src/web.ts';
-import { profileDescription, withMeta } from './meta.ts';
+import { SITE_URL, profileDescription, profileJsonLd, profileSummaryHtml, withMeta } from './meta.ts';
 import { HttpError, SECURITY_HEADERS, json, now, rateLimit, randomToken, readJson, sha256Hex, type Env } from './util.ts';
 
 const LOGIN_TTL_S = 900;
 const MAX_BATCH = 1000;
+const MAX_SESSION_ROWS_PER_USER = 200_000; // sessions are kept two years; this is far above real use
 const MAX_EVENT_BATCH = 500; // keeps the single JSON parameter well under D1's 2 MB value limit
 const BUCKET_FIELDS = ['input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_tokens'] as const;
 
@@ -334,6 +335,10 @@ const ingestSessions: Route = async (req, env) => {
     validInstant(s.first_at) && validInstant(s.last_at) && isNonNegInt(s.event_count));
   if (!ok) throw new HttpError(400, 'Invalid session row');
   if (sessions.length) {
+    const n = await env.DB.prepare('SELECT COUNT(*) AS n FROM usage_sessions WHERE user_id = ?').bind(d.user_id).first<{ n: number }>();
+    if ((n?.n ?? 0) + sessions.length > MAX_SESSION_ROWS_PER_USER) throw new HttpError(413, 'Account storage limit reached. Contact support.');
+    // Stored as canonical ISO strings: the window queries and cleanup compare them as text.
+    const rows = sessions.map((s: any) => ({ ...s, first_at: new Date(s.first_at).toISOString(), last_at: new Date(s.last_at).toISOString() }));
     await env.DB.prepare(
       `INSERT INTO usage_sessions (user_id, device_id, provider, session_key, first_at, last_at, event_count)
        SELECT ?1, ?2, json_extract(value, '$.provider'), json_extract(value, '$.session_key'), json_extract(value, '$.first_at'),
@@ -341,7 +346,7 @@ const ingestSessions: Route = async (req, env) => {
        FROM json_each(?3) WHERE true
        ON CONFLICT (user_id, device_id, session_key) DO UPDATE SET
          first_at = excluded.first_at, last_at = excluded.last_at, event_count = excluded.event_count`,
-    ).bind(d.user_id, d.id, JSON.stringify(sessions)).run();
+    ).bind(d.user_id, d.id, JSON.stringify(rows)).run();
   }
   return json({ ok: true, upserted: sessions.length });
 };
@@ -693,15 +698,66 @@ const webSignupCancel: Route = async (req) => {
   return json({ ok: true }, 200, { 'set-cookie': clearPendingCookie(req) });
 };
 
-/** /@username: the SPA shell with this profile's title and share-preview tags. */
+/** Headers for HTML pages the Worker builds from index.html: same policy as serveAsset. */
+function pageHeaders(req: Request, cacheControl: string): Record<string, string> {
+  const h: Record<string, string> = { 'content-type': 'text/html; charset=utf-8', 'cache-control': cacheControl, 'content-security-policy': CSP, ...SECURITY_HEADERS };
+  if (new URL(req.url).protocol === 'https:') h['strict-transport-security'] = 'max-age=31536000; includeSubDomains';
+  return h;
+}
+
+const NOT_FOUND_META = { title: 'Not found · tokenburn', description: "This page doesn't exist.", noindex: true };
+
+/**
+ * /@username: the SPA shell with this profile's title, canonical URL, share-preview tags and structured data.
+ * One URL per profile: other spellings (/@Alice, /@alice/) redirect to /@alice. Pages may be cached for a minute,
+ * like the profile data behind them.
+ */
 const profileShell: Route = async (req, env, p, ctx) => {
-  const username = decodeURIComponent(p.username).toLowerCase();
+  const url = new URL(req.url);
+  const raw = decodeURIComponent(p.username);
+  const username = raw.toLowerCase();
   const shell = await env.ASSETS.fetch(new Request(new URL('/', req.url)));
+  // Malformed names can't exist: answer without a database read or a cache entry per junk name.
+  if (!USERNAME_RE.test(username)) return withMeta(new Response(shell.body, { status: 404, headers: pageHeaders(req, 'public, max-age=300') }), NOT_FOUND_META);
+  if (raw !== username || url.pathname !== `/@${username}`) {
+    return new Response(null, { status: 301, headers: { location: `/@${username}${url.search}`, ...SECURITY_HEADERS } });
+  }
   const prof = await cachedPublicProfile(env, ctx, username);
-  const res = new Response(shell.body, { status: prof ? 200 : 404, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'content-security-policy': CSP, ...SECURITY_HEADERS } });
-  return prof
-    ? withMeta(res, { title: `@${prof.username} · AI coding usage`, description: profileDescription(prof), url: `${new URL(req.url).origin}/@${prof.username}` })
-    : withMeta(res, { title: 'Not found · tokenburn', noindex: true });
+  if (!prof) return withMeta(new Response(shell.body, { status: 404, headers: pageHeaders(req, 'public, max-age=60') }), NOT_FOUND_META);
+  const canonical = `${SITE_URL}/@${prof.username}`;
+  const description = profileDescription(prof);
+  return withMeta(new Response(shell.body, { status: 200, headers: pageHeaders(req, 'public, max-age=60') }), {
+    title: `@${prof.username} · AI coding usage`, // same as the page sets once it loads (apps/web/src/pages/profile.tsx)
+    description,
+    canonical,
+    ogType: 'profile',
+    jsonLd: profileJsonLd(prof, canonical, description),
+    root: profileSummaryHtml(prof),
+    data: { id: 'profile-data', value: prof }, // the app renders from this instead of fetching /api/public again
+  });
+};
+
+/**
+ * /sitemap.xml: the landing page and every public profile. Cached at the edge for an hour; a profile published
+ * or unpublished in between shows up (or drops out) on the next refresh, and unpublished pages answer 404 anyway.
+ */
+const sitemap: Route = async (req, env, _p, ctx) => {
+  const key = new Request('https://public-cache.internal/sitemap.xml');
+  const hit = await caches.default.match(key).catch(() => undefined);
+  if (hit) return hit;
+  const { results } = await env.DB.prepare(
+    `SELECT u.username, p.updated_at FROM profiles p JOIN users u ON u.id = p.user_id
+     WHERE p.is_public = 1 AND u.username IS NOT NULL ORDER BY p.updated_at DESC LIMIT 49999`,
+  ).all<{ username: string; updated_at: string }>();
+  const entry = (loc: string, lastmod?: string) => `<url><loc>${loc}</loc>${lastmod ? `<lastmod>${lastmod.slice(0, 10)}</lastmod>` : ''}</url>`;
+  const xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+    + entry(`${SITE_URL}/`)
+    + results.map((r) => entry(`${SITE_URL}/@${r.username}`, r.updated_at)).join('')
+    + '</urlset>';
+  const res = new Response(xml, { headers: { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=3600', ...SECURITY_HEADERS } });
+  const put = caches.default.put(key, res.clone()).catch(() => {});
+  if (ctx) ctx.waitUntil(put); else await put;
+  return res;
 };
 
 /** Same policy as apps/web/public/_headers. Inline styles are allowed (UI libraries inject <style>; CSS cannot run code); scripts are same-origin only. */
@@ -730,12 +786,31 @@ async function maybeCleanup(env: Env) {
   await cleanup(env);
 }
 
-/** Static files and SPA routes, with the same security headers as the Worker's own responses. */
+/** Client-side routes of the SPA (apps/web/src/routes.tsx); /@username has its own handler above. */
+const SPA_ROUTES = /^\/(?:welcome|settings|dashboard(?:\/(?:models|machines|settings))?)\/?$/;
+
+/**
+ * Static files and SPA routes, with the same security headers as the Worker's own responses. index.html holds the
+ * prerendered landing page: `/` gets it as built, app routes get the bare shell (noindex: nothing to index behind
+ * sign-in), and paths that are neither a file nor a route get the shell with a real 404 instead of a soft one.
+ */
 async function serveAsset(req: Request, env: Env): Promise<Response> {
   const res = await env.ASSETS.fetch(req);
+  const { pathname } = new URL(req.url);
+  const isHtml = (res.headers.get('content-type') ?? '').includes('text/html');
+  if (isHtml && res.status === 200 && pathname !== '/') {
+    const known = SPA_ROUTES.test(pathname);
+    const out = new Response(res.body, { status: known ? 200 : 404, headers: res.headers });
+    for (const [k, v] of Object.entries(pageHeaders(req, known ? 'no-cache' : 'public, max-age=300'))) out.headers.set(k, v);
+    out.headers.delete('etag'); // the body differs from index.html's
+    return withMeta(out, known ? { title: 'tokenburn', noindex: true } : NOT_FOUND_META);
+  }
   const out = new Response(res.body, res);
   for (const [k, v] of Object.entries(SECURITY_HEADERS)) out.headers.set(k, v);
-  if ((out.headers.get('content-type') ?? '').includes('text/html')) out.headers.set('content-security-policy', CSP);
+  if (isHtml) out.headers.set('content-security-policy', CSP);
+  // Vite content-hashes everything under /assets, so a file there never changes (mirrors public/_headers, which
+  // Pages doesn't apply to responses that pass through the Worker).
+  if (pathname.startsWith('/assets/') && res.status === 200) out.headers.set('cache-control', 'public, max-age=31536000, immutable');
   if (new URL(req.url).protocol === 'https:') out.headers.set('strict-transport-security', 'max-age=31536000; includeSubDomains');
   return out;
 }
@@ -746,6 +821,7 @@ const routes: [string, RegExp, Route][] = [
   ['GET', /^\/login$/, loginPage],
   ['GET', /^\/auth\/callback$/, authCallback],
   ['GET', /^\/(?:@|%40)(?<username>[\w-]+)\/?$/, profileShell],
+  ['GET', /^\/sitemap\.xml$/, sitemap],
   ['GET', /^\/api\/web\/session$/, webSession],
   ['GET', /^\/api\/web\/avatar$/, webAvatar],
   ['GET', /^\/api\/web\/pending$/, webPending],
@@ -792,7 +868,16 @@ export default {
           if (!(e instanceof HttpError)) console.error(e);
           const status = e instanceof HttpError ? e.status : 500;
           const message = e instanceof HttpError ? e.message : 'Internal error';
-          return isApi ? json({ error: message }, status) : signinError(status === 503 ? 'not_configured' : status === 429 ? 'rate_limited' : 'failed');
+          if (isApi) return json({ error: message }, status);
+          // Sign-in failures go back to the landing page with a message; a failing page (say /@name during a D1 blip)
+          // answers 503 so crawlers retry later instead of following a redirect home.
+          if (url.pathname === '/login' || url.pathname === '/auth/callback') {
+            return signinError(status === 503 ? 'not_configured' : status === 429 ? 'rate_limited' : 'failed');
+          }
+          return new Response('Temporarily unavailable. Try again in a moment.', {
+            status: status >= 500 ? 503 : status,
+            headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', 'retry-after': '30', ...SECURITY_HEADERS },
+          });
         }
       }
     }

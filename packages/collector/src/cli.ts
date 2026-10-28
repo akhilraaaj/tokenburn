@@ -11,6 +11,7 @@ import { DEFAULT_API_URL, loadConfig, saveConfig, type Config } from './config.t
 import { stateDir } from './paths.ts';
 import { INTERVAL_MIN, installService, logPath, runningFromNpxCache, serviceStatus, uninstallService } from './service.ts';
 import { LOCAL_SOURCES, type SourceContext } from './sources/index.ts';
+import { syncClaudeBillingMode } from './sources/claude-code.ts';
 import { autoImportCursorExports, defaultDownloadsDir } from './sources/cursor-downloads.ts';
 import { collectOpenRouter } from './sources/openrouter.ts';
 import { withLock } from './lock.ts';
@@ -124,7 +125,7 @@ function flag(args: string[], name: string): string | undefined {
   return i >= 0 ? args[i + 1] : undefined;
 }
 
-const ctxOf = (cfg: Config): SourceContext => ({ extraDirs: cfg.extra_dirs, billingOverrides: cfg.billing_overrides });
+const ctxOf = (cfg: Config): SourceContext => ({ extraDirs: cfg.extra_dirs, billingOverrides: cfg.billing_overrides, claudeApiKeySeen: cfg.claude_api_key_seen });
 const home = (p: string) => (p.startsWith(os.homedir()) ? `~${p.slice(os.homedir().length)}` : p);
 const isLocalServer = (url: string) => /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/.test(url);
 const plural = (n: number, w: string) => `${n.toLocaleString('en-US')} ${w}${n === 1 ? '' : 's'}`;
@@ -191,8 +192,16 @@ async function collectAll(store: Store, cfg: Config, opts: { network: boolean })
   const ctx = ctxOf(cfg);
   const found: Found[] = [];
   let changed = 0;
+  syncClaudeBillingMode(store, ctx);
   for (const src of LOCAL_SOURCES) {
-    const s = src.scan(store, ctx);
+    // One tool's broken files must not stop the others (or the upload).
+    let s: ReturnType<typeof src.scan>;
+    try {
+      s = src.scan(store, ctx);
+    } catch (e) {
+      found.push({ label: src.label, detail: `couldn't read: ${(e as Error).message}`, problem: true });
+      continue;
+    }
     changed += s.changedEvents;
     if (s.roots.length) {
       found.push({
@@ -884,7 +893,10 @@ async function main() {
       const [sub, a, b, d] = args;
       if (sub === 'set' && a === 'billing-mode') {
         if (!PROVIDERS.includes(b as Provider)) throw new Error(`Tool must be one of ${PROVIDERS.join(', ')}`);
-        if (d === 'auto') delete cfg.billing_overrides[b as Provider];
+        if (d === 'auto') {
+          delete cfg.billing_overrides[b as Provider];
+          if (b === 'claude_code') cfg.claude_api_key_seen = !!process.env.ANTHROPIC_API_KEY; // detect afresh
+        }
         else if (BILLING_MODES.includes(d as BillingMode)) cfg.billing_overrides[b as Provider] = d as BillingMode;
         else throw new Error(`billing-mode must be auto or one of ${BILLING_MODES.join(', ')}`);
         saveConfig(cfg);

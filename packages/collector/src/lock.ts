@@ -36,8 +36,17 @@ export function acquireLock(): (() => void) | null {
       return release;
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      let text: string;
+      try {
+        text = fs.readFileSync(lockFile(), 'utf8');
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') continue; // released meanwhile: try again
+        throw err;
+      }
+      // Empty: the holder created the file and hasn't written its pid yet (unless it died right there, long ago).
+      if (!text.trim() && Date.now() - fs.statSync(lockFile()).mtimeMs < 10_000) return null;
       // "pid takenAtMs" (older versions wrote only the pid, so their age is unknown and only liveness counts).
-      const [pidText, takenText] = fs.readFileSync(lockFile(), 'utf8').trim().split(' ');
+      const [pidText, takenText] = text.trim().split(' ');
       const pid = Number(pidText);
       const fresh = !takenText || Date.now() - Number(takenText) < MAX_LOCK_AGE_MS;
       if (pid && pid !== process.pid && alive(pid) && fresh) return null;

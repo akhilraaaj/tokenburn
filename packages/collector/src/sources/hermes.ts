@@ -87,7 +87,7 @@ export function scanHermes(store: Store, ctx: SourceContext): ScanStats {
             cache_write_tokens: delta.cache_write_tokens,
             usage_source: 'hermes_sqlite',
             measurement_type: 'measured',
-            billing_mode: 'unknown',
+            billing_mode: ctx.billingOverrides.hermes ?? 'unknown', // same as hermesSource.billing(), so new rows follow a config override
             dedupe_key: `hermes:${rowKey}:${cur.api_call_count}:${cur.input_tokens}:${cur.output_tokens}`,
             event_count: Math.max(1, delta.api_call_count),
             // Hermes records provider-reported charges when available, else its own estimate.

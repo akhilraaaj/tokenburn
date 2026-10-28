@@ -88,7 +88,8 @@ export function scanGeminiCli(store: Store, ctx: SourceContext): ScanStats {
   }
 
   for (const file of legacy) {
-    const st = fs.statSync(file);
+    let st: fs.Stats;
+    try { st = fs.statSync(file); } catch { continue; } // deleted since listing
     const prev = store.importedFile(file);
     if (prev && prev.size === st.size && prev.mtime_ms === Math.floor(st.mtimeMs)) continue;
     try {

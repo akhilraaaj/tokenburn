@@ -224,8 +224,11 @@ export class Store {
   clearSourceState(roots: string[], snapshotPrefixes: string[]) {
     this.transaction(() => {
       for (const r of roots) {
-        this.db.prepare("DELETE FROM files WHERE path = ? OR path LIKE ? ESCAPE '\\'").run(r, r.replace(/[%_\\]/g, '\\$&') + '/%');
-        this.db.prepare("DELETE FROM imported_files WHERE path = ? OR path LIKE ? ESCAPE '\\'").run(r, r.replace(/[%_\\]/g, '\\$&') + '/%');
+        // Children of the root on either separator (Windows paths use backslashes).
+        const esc = r.replace(/[%_\\]/g, '\\$&');
+        for (const table of ['files', 'imported_files']) {
+          this.db.prepare(`DELETE FROM ${table} WHERE path = ? OR path LIKE ? ESCAPE '\\' OR path LIKE ? ESCAPE '\\'`).run(r, esc + '/%', esc + '\\\\%');
+        }
       }
       for (const p of snapshotPrefixes) this.db.prepare("DELETE FROM snapshots WHERE key LIKE ? ESCAPE '\\'").run(p.replace(/[%_\\]/g, '\\$&') + '%');
     });

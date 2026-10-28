@@ -147,7 +147,8 @@ export function scanCodex(store: Store, ctx: SourceContext, onlyFiles?: string[]
   // Compressed archives (opt-in Codex feature) are read whole, once per size/mtime.
   if (!onlyFiles) {
     for (const file of zst) {
-      const st = fs.statSync(file);
+      let st: fs.Stats;
+      try { st = fs.statSync(file); } catch { continue; } // deleted since listing
       const prev = store.importedFile(file);
       if (prev && prev.size === st.size && prev.mtime_ms === Math.floor(st.mtimeMs)) continue;
       let text: string;

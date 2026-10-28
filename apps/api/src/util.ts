@@ -65,11 +65,15 @@ export async function readJson<T = any>(req: Request, maxBytes = 2_000_000): Pro
   if (len > maxBytes) throw new HttpError(413, 'Payload too large');
   const text = await req.text();
   if (text.length > maxBytes) throw new HttpError(413, 'Payload too large');
+  let body: unknown;
   try {
-    return JSON.parse(text);
+    body = JSON.parse(text);
   } catch {
     throw new HttpError(400, 'Invalid JSON');
   }
+  // Every route reads fields off the body; `null`, an array or a bare value would otherwise surface as a 500.
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'Expected a JSON object');
+  return body as T;
 }
 
 export const now = () => new Date().toISOString();

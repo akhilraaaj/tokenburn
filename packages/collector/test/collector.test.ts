@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { scanClaudeCode } from '../src/sources/claude-code.ts';
+import { claudeCodeSource, scanClaudeCode, syncClaudeBillingMode } from '../src/sources/claude-code.ts';
+import { loadConfig } from '../src/config.ts';
 import { Store } from '../src/store.ts';
 import { planSync } from '../src/sync.ts';
 import type { Config } from '../src/config.ts';
@@ -13,7 +14,7 @@ let claudeDir: string;
 let store: Store;
 const cfg: Config = {
   api_url: 'http://x', device_token: 't', device_id: 'd', previous_token: null, session_salt: 'salt', extra_dirs: {},
-  billing_overrides: {}, first_sync_approved: true, cursor_auto_import: false, downloads_dir: null, openrouter_key: null,
+  billing_overrides: {}, claude_api_key_seen: false, first_sync_approved: true, cursor_auto_import: false, downloads_dir: null, openrouter_key: null,
 };
 
 beforeEach(() => {
@@ -97,5 +98,43 @@ describe('incremental Claude Code collection', () => {
     const p3 = planSync(store, cfg);
     expect(p3.bucketUpserts.every((b) => b.billing_mode === 'api')).toBe(true);
     expect(p3.bucketDeletes).toHaveLength(p1.bucketUpserts.length);
+  });
+});
+
+describe('Claude Code billing mode across manual and scheduled runs', () => {
+  // Scheduled runs (launchd, systemd, cron, Task Scheduler) don't get the user's shell variables.
+  const ctxFor = (seen: boolean) => ({ extraDirs: {}, billingOverrides: {}, claudeApiKeySeen: seen });
+  beforeEach(() => { process.env.TOKENBURN_HOME = path.join(tmp, 'tb-home'); });
+  afterEach(() => {
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.TOKENBURN_HOME;
+  });
+
+  it('remembers a key seen in the shell, so scheduled runs agree and a split day is merged', () => {
+    scanClaudeCode(store, 'subscription'); // rows an earlier scheduled run stamped without seeing the key
+    process.env.ANTHROPIC_API_KEY = 'sk-test';
+    expect(loadConfig().claude_api_key_seen).toBe(true); // a manual run from the shell
+    expect(fs.readFileSync(path.join(tmp, 'tb-home', 'config.json'), 'utf8')).not.toContain('sk-test');
+
+    delete process.env.ANTHROPIC_API_KEY; // the next scheduled run
+    const cfgNow = loadConfig();
+    expect(cfgNow.claude_api_key_seen).toBe(true);
+    const ctx = ctxFor(cfgNow.claude_api_key_seen);
+    expect(claudeCodeSource.billing(ctx).mode).toBe('api');
+
+    syncClaudeBillingMode(store, ctx);
+    const modes = new Set(planSync(store, cfg).bucketUpserts.map((b) => b.billing_mode));
+    expect([...modes]).toEqual(['api']);
+  });
+
+  it('never claims api billing without the key, and restamps only when the mode changes', () => {
+    expect(loadConfig().claude_api_key_seen).toBe(false);
+    const mode = claudeCodeSource.billing(ctxFor(false)).mode;
+    expect(mode).not.toBe('api');
+    scanClaudeCode(store, mode);
+    syncClaudeBillingMode(store, ctxFor(false));
+    store.setUploaded('uploaded_buckets', planSync(store, cfg).hashes.buckets, []);
+    syncClaudeBillingMode(store, ctxFor(false)); // same mode: nothing to re-upload
+    expect(planSync(store, cfg).bucketUpserts).toHaveLength(0);
   });
 });

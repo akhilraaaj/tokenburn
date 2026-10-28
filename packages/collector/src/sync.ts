@@ -153,8 +153,9 @@ export async function runSync(
   if (!opts.force && !store.isDirty() && lastSync && Date.now() - Date.parse(lastSync) < HEARTBEAT_MS) {
     return { buckets: 0, deletedBuckets: 0, sessions: 0, accountInserted: 0, accountDuplicates: 0, skipped: true };
   }
-  // A device's very first upload already sends everything, so a reset marker seen then needs no re-upload.
-  const firstUpload = store.uploadedHashes('uploaded_buckets').size === 0;
+  // A device's very first upload already sends everything, so a reset marker seen then needs no re-upload. Judged by
+  // any past sync, not by uploaded buckets: a machine with only Cursor/OpenRouter rows never has any.
+  const firstUpload = !lastSync;
   const generation = store.dirtyGeneration(); // what this run uploads; later writes stay pending
   const plan = planSync(store, cfg, prices);
   let accountInserted = 0;

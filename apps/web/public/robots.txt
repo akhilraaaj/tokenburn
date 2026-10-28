@@ -1,8 +1,14 @@
-# Landing page and public profiles (/@username) are crawlable; the signed-in app, API and sign-in are not.
+# Landing page and public profiles (/@username) are crawlable, including the public JSON and avatars a profile page
+# loads (crawlers that render pages need them); the signed-in app, the rest of the API and sign-in are not.
 User-agent: *
 Allow: /
-Disallow: /dashboard
+Allow: /api/public/
+Allow: /api/avatar/
 Disallow: /api/
 Disallow: /auth/
 Disallow: /login
 Disallow: /welcome
+Disallow: /dashboard
+Disallow: /settings
+
+Sitemap: https://tokenburn.pages.dev/sitemap.xml

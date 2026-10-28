@@ -4,3 +4,4 @@ dist/
 .dev.vars
 *.local.csv
 fixtures/*.local.json
+dist-ssr/

@@ -1,15 +1,14 @@
-import { memo, useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { lazy, memo, Suspense, useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  ArrowDown, ArrowRight, AtSign, BarChart3, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight, Coins, Flame, Globe, Laptop, Layers, Loader2, Lock, RefreshCw, Terminal, X,
+  ArrowDown, ArrowRight, AtSign, BarChart3, CalendarDays, Check, ChevronDown, ChevronRight, Coins, Flame, Globe, Laptop, Layers, Loader2, Lock, RefreshCw, Terminal, X,
 } from 'lucide-react';
 import { GitHubMark, LogoMark, ToolMark, TOOL_MARKS } from '@/components/brand';
 import { CopyCommand } from '@/components/copy-command';
 import { TOOL_LOGOS, ToolLogoMark } from '@/components/tool-logos';
 import { Pills } from '@/components/pills';
 import { UsageChart } from '@/components/usage-chart';
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
@@ -18,11 +17,14 @@ import { CONTRIBUTION_DAYS, contributionDays, type DailyRow, type DayTotal, type
 import { compact, fmt, plural, usd } from '@/lib/format.ts';
 import { colorMap, daysFrom, rowTokens, type Metric, type Row } from '@/lib/series.ts';
 import { cn } from '@/lib/utils';
+import { nowMs, useHost, useHydrated, useToday } from '@/lib/clock';
 import { AreaChart, perDay } from '@/components/profile-widgets';
 import { useSession } from '@/session';
 import { checkUsernameNow, useUsernameCheck, type UsernameCheck } from '@/lib/username-check';
 import { KpiCard, streakRuns } from '@/components/kpi-card';
 import { ProfileHeader, ProfileView } from './profile';
+
+const AccountDeletedDialog = lazy(() => import('@/components/account-deleted-dialog').then((m) => ({ default: m.AccountDeletedDialog })));
 
 const INSTALL = 'npm install -g use-tokenburn && tokenburn setup';
 
@@ -61,7 +63,7 @@ const DEFAULT_SHOWS: Shows = {
   show_daily_trend: true, show_streaks: true, show_costs: false,
 };
 
-const FAQ = [
+export const FAQ = [
   { q: 'Are my prompts or code uploaded?', a: 'No. The CLI reads usage records on your machine and uploads daily totals per model, request counts and hashed session ids. Prompts, responses, code, file paths, project names and keys stay on your computer.' },
   { q: 'Is my profile public?', a: 'Not until you say so. Your profile is private by default; publish it from Settings or with tokenburn profile public, and pick exactly which fields it shows.' },
   { q: "What's on a public profile?", a: 'Only what you switch on: your tools, models, token totals, a daily chart, streaks, a contribution graph and estimated cost. Each one has its own switch, and the preview above uses the same ones.' },
@@ -95,8 +97,8 @@ const demoCost = (model: keyof typeof DEMO_PRICES, t: DemoTokens) => {
 };
 
 /** Illustrative data for the preview card (clearly labeled as an example on the page). */
-function exampleRows(): { rows: Row[]; since: string } {
-  const since = new Date(Date.now() - 29 * 864e5).toISOString().slice(0, 10);
+function exampleRows(today: string): { rows: Row[]; since: string } {
+  const since = new Date(Date.parse(today) - 29 * 864e5).toISOString().slice(0, 10);
   const shape = [4, 6, 3, 0, 5, 7, 2, 3, 5, 2, 8, 6, 9, 4, 6, 7, 11, 6, 8, 12, 5, 9, 14, 7, 10, 13, 8, 11, 12, 9];
   const rows: Row[] = [];
   shape.forEach((v, i) => {
@@ -122,8 +124,8 @@ const EXAMPLE_MODELS = [
  * An example public profile, built the way the server builds a real one: 90 days of daily rows, then only the
  * fields the switches allow (mirrors publicProfile() in apps/api).
  */
-function exampleProfile(handle: string, f: Shows, avatarUrl = ''): PublicProfile {
-  const today = Date.parse(new Date().toISOString().slice(0, 10));
+function exampleProfile(handle: string, f: Shows, day: string, avatarUrl = ''): PublicProfile {
+  const today = Date.parse(day);
   const dayOf = (back: number) => new Date(today - back * 864e5).toISOString().slice(0, 10);
   const since = dayOf(89);
   const daily: DailyRow[] = [];
@@ -165,7 +167,7 @@ function exampleProfile(handle: string, f: Shows, avatarUrl = ''): PublicProfile
       const events = Math.round(10 + r * 50 * (1 - back / 600));
       history.push({ day: dayOf(back), events, tokens: events * 160000 });
     }
-    out.contributions = contributionDays(history, shows.tokens);
+    out.contributions = contributionDays(history, shows.tokens, day);
   }
   if (f.show_models || f.show_providers || shows.tokens || shows.costs) {
     const groups = new Map<string, PublicRow>();
@@ -255,7 +257,10 @@ export function Landing() {
   const { state } = useLocation() as { state: { section?: string } | null };
   const deleted = params.get('deleted') === '1';
   const navigate = useNavigate();
-  const example = useMemo(exampleRows, []);
+  // Example data is dated relative to today; useToday keeps it identical to the prerendered HTML while hydrating.
+  const today = useToday();
+  const hydrated = useHydrated(); // the ?deleted dialog is client-only; the prerendered page has none
+  const example = useMemo(() => exampleRows(today), [today]);
   const colorOf = useMemo(() => colorMap(example.rows), [example]);
   const [handle, setHandle] = useState('');
   // The demos follow the typed handle at low priority, so typing stays instant while they re-render behind it.
@@ -265,7 +270,7 @@ export function Landing() {
   // Signed in, the example profile wears the visitor's own GitHub avatar (their numbers stay examples); signed out,
   // an identicon made from the handle they're typing.
   const avatarUrl = useMemo(() => (user ? '/api/web/avatar' : identicon(shown)), [user, shown]);
-  const profile = useMemo(() => exampleProfile(shown, shows, avatarUrl), [shown, shows, avatarUrl]);
+  const profile = useMemo(() => exampleProfile(shown, shows, today, avatarUrl), [shown, shows, today, avatarUrl]);
 
   // Sign-in failures land here as ?error=… — toast once, then drop the param so refresh doesn't re-fire.
   const errorToasted = useRef(false);
@@ -303,24 +308,11 @@ export function Landing() {
     <div className="relative overflow-x-clip">
 
       <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-20 px-5 pt-16 pb-24 sm:gap-24 sm:px-8 sm:pt-20 lg:gap-28 lg:pt-24">
-        <Dialog open={deleted} onOpenChange={(open) => { if (!open) navigate('/', { replace: true }); }}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <div className="mb-1 flex size-10 items-center justify-center rounded-full border"><CheckCircle2 className="size-5 text-brand" /></div>
-              <DialogTitle>Your account was deleted</DialogTitle>
-              <DialogDescription>Your profile and all uploaded usage are gone from the server.</DialogDescription>
-            </DialogHeader>
-            <ul className="grid gap-3 text-sm text-muted-foreground">
-              <li>If you sign in with GitHub again, you'll be asked before a new, empty account is created.</li>
-              <li>To remove tokenburn from GitHub entirely, revoke it in GitHub → Settings → Applications → Authorized OAuth Apps.</li>
-              <li>Machines you connected keep their local data. Run this on each to remove it:</li>
-            </ul>
-            <CopyCommand command="tokenburn forget" />
-            <DialogFooter>
-              <DialogClose asChild><Button>Done</Button></DialogClose>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        {deleted && hydrated && (
+          <Suspense fallback={null}>
+            <AccountDeletedDialog onClose={() => navigate('/', { replace: true })} />
+          </Suspense>
+        )}
 
         {/* Hero + product preview, kept close so the dashboard shows on the first screen */}
         <div className="grid grid-cols-1 gap-10 sm:gap-12">
@@ -623,13 +615,14 @@ function ProfileCta() {
 /** "yourhost/@handle" field: typing previews the handle across the page; claiming goes through sign-in. */
 function HandleClaim({ id = 'handle', handle, onChange }: { id?: string; handle: string; onChange: (h: string) => void }) {
   const { user } = useSession();
+  const host = useHost();
   if (user) {
     return (
       <div className="grid w-full max-w-xl grid-cols-1 gap-4">
         {/* Same shape as the claim field below, with the signed-in actions in place of the input. */}
         <div className="flex overflow-hidden rounded-xl border bg-card shadow-xs">
           <span className="flex shrink-0 items-center border-r bg-surface-2 px-3 font-mono text-sm text-muted-foreground">
-            <span className="hidden sm:inline font-medium">{window.location.host}/</span>@
+            <span className="hidden sm:inline font-medium">{host}/</span>@
           </span>
           {user.username ? (
             <Link to={`/@${user.username}`} className="flex min-w-0 flex-1 items-center truncate px-3 py-2.5 text-left font-mono text-sm text-foreground hover:text-brand">
@@ -681,7 +674,7 @@ function ClaimForm({ id, handle, onChange }: { id: string; handle: string; onCha
     }
     window.location.assign(`/login?handle=${encodeURIComponent(handle)}`);
   };
-  const host = window.location.host;
+  const host = useHost();
   const hint =
     check.state === 'ok' ? <><Check className="size-3.5 text-[var(--series-3)]" />@{handle} is available</>
       : check.state === 'bad' ? <><X className="size-3.5 text-destructive" />{check.reason ?? 'Not available'}</>
@@ -816,13 +809,14 @@ function ExampleBadge() {
 
 function ProfilePreview({ profile, labeled }: { profile: PublicProfile; labeled: boolean }) {
   const [expanded, setExpanded] = useState(false);
+  const host = useHost();
   return (
     <div className="relative flex flex-col overflow-clip rounded-xl border bg-background shadow-sm">
       <div className="flex flex-none items-center gap-3 border-b bg-card px-4 py-2.5">
         <WindowDots />
         <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md border bg-surface-2/60 px-2.5 py-1 font-mono text-xs text-muted-foreground">
           <Lock className="size-3 flex-none text-subtle" />
-          <span className="truncate">{window.location.host}/<span className="text-foreground">@{profile.username}</span></span>
+          <span className="truncate">{host}/<span className="text-foreground">@{profile.username}</span></span>
         </div>
         {labeled && <ExampleBadge />}
       </div>
@@ -850,7 +844,8 @@ function ProfilePreview({ profile, labeled }: { profile: PublicProfile; labeled:
 const HeroDashboard = memo(function HeroDashboard({ rows, since, colorOf, labeled }: { rows: Row[]; since: string; colorOf: (k: string) => number; labeled: boolean }) {
   const [range, setRange] = useState<'7' | '30'>('30');
   const [metric, setMetric] = useState<Metric>('output');
-  const from = range === '7' ? new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10) : since;
+  const host = useHost();
+  const from = range === '7' ? new Date(nowMs() - 6 * 864e5).toISOString().slice(0, 10) : since;
   const shown = rows.filter((r) => r.day! >= from);
   const total = (f: (r: Row) => number) => shown.reduce((a, r) => a + f(r), 0);
   const runs = streakRuns(rows, since);
@@ -859,7 +854,7 @@ const HeroDashboard = memo(function HeroDashboard({ rows, since, colorOf, labele
     <div className="overflow-hidden rounded-xl border bg-background shadow-xl shadow-black/5">
       <div className="flex items-center gap-2 border-b bg-card px-4 py-2.5">
         <WindowDots />
-        <span className="ml-3 truncate font-mono text-xs text-subtle">{window.location.host}/dashboard</span>
+        <span className="ml-3 truncate font-mono text-xs text-subtle">{host}/dashboard</span>
         {labeled && <span className="ml-auto"><ExampleBadge /></span>}
       </div>
       <div className="flex text-left">
@@ -931,10 +926,10 @@ function HowItWorks({ handle }: { handle: string }) {
                 <span className="flex flex-col items-center">
                   <span
                     className={cn(
-                      'num relative z-[1] flex size-9 flex-none items-center justify-center rounded-full text-sm font-medium transition-[background-color,border-color,color,box-shadow] duration-300 ease-out',
+                      'num relative z-1 flex size-9 flex-none items-center justify-center rounded-full text-sm font-medium transition-[background-color,border-color,color,box-shadow] duration-300 ease-out',
                       state === 'next'
                         ? 'border-2 bg-background text-subtle group-hover:border-foreground/30 group-hover:text-foreground'
-                        : 'bg-[var(--series-2)] text-[#1c0c04] ring-[6px] ring-[color-mix(in_oklab,var(--series-2)_16%,transparent)] dark:ring-[color-mix(in_oklab,var(--series-2)_26%,transparent)]',
+                        : 'bg-(--series-2) text-white ring-[6px] ring-[color-mix(in_oklab,var(--series-2)_16%,transparent)] dark:ring-[color-mix(in_oklab,var(--series-2)_26%,transparent)]',
                     )}
                   >
                     {i + 1}
@@ -1098,7 +1093,8 @@ function TerminalDemo({ handle, step, onPlay, onAdvance }: {
   onPlay: (ms: number, start: number) => void;
   onAdvance: () => void;
 }) {
-  const lines = useMemo(() => terminalScripts(handle, window.location.host), [handle]);
+  const host = useHost();
+  const lines = useMemo(() => terminalScripts(handle, host), [handle, host]);
   // The step on screen trails the selected one by a short fade: the old output eases out, then the new one types.
   const [shown, setShown] = useState(step);
   const [leaving, setLeaving] = useState(false);

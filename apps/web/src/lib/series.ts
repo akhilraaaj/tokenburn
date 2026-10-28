@@ -1,3 +1,4 @@
+import { nowMs } from '@/lib/clock';
 import { modelDisplayName, PROVIDER_LABELS, SOURCES, rowTokens, type PublicRow, type UsageSource } from '../../../../packages/shared/src/index.ts';
 
 export const providerLabel = (p?: string) => (p ? PROVIDER_LABELS[p as keyof typeof PROVIDER_LABELS] ?? p : '');
@@ -38,7 +39,7 @@ export function metricOf(r: Row, m: Metric): number {
 
 export function daysFrom(since: string): string[] {
   const out: string[] = [];
-  const end = new Date().toISOString().slice(0, 10);
+  const end = new Date(nowMs()).toISOString().slice(0, 10);
   for (let d = new Date(since + 'T00:00:00Z'); d.toISOString().slice(0, 10) <= end; d.setUTCDate(d.getUTCDate() + 1)) out.push(d.toISOString().slice(0, 10));
   return out;
 }

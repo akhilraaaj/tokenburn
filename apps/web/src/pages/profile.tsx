@@ -15,6 +15,7 @@ import { dayLabel } from '@/lib/format.ts';
 import { ProviderChip } from '@/components/tool-logos';
 import { colorMap, rowTokens } from '@/lib/series.ts';
 import { cn } from '@/lib/utils';
+import { nowMs } from '@/lib/clock';
 import { useSession } from '@/session';
 import { NotFound } from './not-found';
 
@@ -30,7 +31,7 @@ const addDays = (day: string, n: number) => {
  */
 function chartStart(since: string, firstDay: string | null) {
   if (!firstDay) return since;
-  const start = [addDays(firstDay, -3), addDays(new Date().toISOString().slice(0, 10), -29)].sort()[0];
+  const start = [addDays(firstDay, -3), addDays(new Date(nowMs()).toISOString().slice(0, 10), -29)].sort()[0];
   return start < since ? since : start;
 }
 
@@ -166,17 +167,38 @@ export function Profile() {
   return <ProfileFrame handle={handle}><ProfileBody handle={handle} /></ProfileFrame>;
 }
 
+/**
+ * The profile the Worker embedded in this page's HTML (profileShell in apps/api), so the first render needs no
+ * request. Only good for the page it came with: dropped once used, later profiles are fetched.
+ */
+let embedded: PublicProfile | null = (() => {
+  try {
+    return JSON.parse(document.getElementById('profile-data')?.textContent ?? 'null');
+  } catch {
+    return null;
+  }
+})();
+const embeddedFor = (handle: string) => (embedded?.username === handle ? embedded : null);
+
 function ProfileBody({ handle }: { handle: string }) {
   const { user } = useSession();
-  const [profile, setProfile] = useState<PublicProfile | null>(null);
+  const [profile, setProfile] = useState<PublicProfile | null>(() => embeddedFor(handle));
   const [missing, setMissing] = useState(false);
 
   useEffect(() => {
-    setProfile(null);
+    const first = embeddedFor(handle);
+    embedded = null;
     setMissing(false);
+    if (first) {
+      setProfile(first);
+      document.title = `@${first.username} · AI coding usage`;
+      return;
+    }
+    setProfile((p) => (p?.username === handle ? p : null));
     api<PublicProfile>('GET', `/api/public/${encodeURIComponent(handle)}`)
-      .then((p) => { setProfile(p); document.title = `@${p.username} · tokenburn`; })
-      .catch((e: ApiError) => { if (e.status === 404) setMissing(true); });
+      // Same title the server renders for this page (apps/api/src/index.ts, profileShell).
+      .then((p) => { setProfile(p); document.title = `@${p.username} · AI coding usage`; })
+      .catch((e: ApiError) => { if (e.status === 404) { setMissing(true); document.title = 'Not found · tokenburn'; } });
   }, [handle]);
 
   if (missing) {
@@ -218,7 +240,7 @@ export function ProfileView({ profile, preview = false }: { profile: PublicProfi
   // A year of active days when the server sends it; otherwise the 90-day trend rows (older servers, cached JSON).
   const contributions = profile.contributions
     ? {
-      since: new Date(Date.now() - (CONTRIBUTION_DAYS - 1) * 864e5).toISOString().slice(0, 10),
+      since: new Date(nowMs() - (CONTRIBUTION_DAYS - 1) * 864e5).toISOString().slice(0, 10),
       days: profile.contributions.map((d) => ({ day: d.day, value: profile.shows.tokens ? d.tokens ?? 0 : d.events })),
     }
     : hasTrend

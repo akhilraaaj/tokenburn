@@ -3,6 +3,7 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Wordmark } from '@/components/brand';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
+import { useToday } from '@/lib/clock';
 import { cn } from '@/lib/utils';
 import { useSession } from '@/session';
 
@@ -36,7 +37,7 @@ export function PublicLayout() {
   useEffect(() => {
     window.scrollTo(0, 0);
     if (!pathname.startsWith('/@') && !pathname.startsWith('/%40')) {
-      document.title = pathname === '/' ? 'tokenburn · AI coding usage, tracked locally' : 'tokenburn';
+      document.title = pathname === '/' ? 'tokenburn · AI coding usage, tracked locally' : pathname === '/welcome' ? 'Welcome · tokenburn' : 'Not found · tokenburn';
     }
   }, [pathname]);
   const scrolled = useScrolled();
@@ -87,7 +88,8 @@ export function PublicLayout() {
 
 /** True once the page has scrolled past the very top. */
 function useScrolled(threshold = 8) {
-  const [scrolled, setScrolled] = useState(() => window.scrollY > threshold);
+  // Starts false (as prerendered) and is corrected by the effect, so hydration matches even on a restored scroll.
+  const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > threshold);
     onScroll();
@@ -158,7 +160,7 @@ function SiteFooter({ signedIn }: { signedIn: boolean }) {
         </div>
       </div>
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-2 px-5 py-5 text-xs text-subtle font-medium sm:flex-row sm:items-center sm:justify-between sm:px-8">
-        <span>© {new Date().getFullYear()} tokenburn</span>
+        <span>© {useToday().slice(0, 4)} tokenburn</span>
         <span>Usage is collected locally · costs are API list-price estimates</span>
       </div>
       {/* Drawn with ::after so the decorative wordmark isn't page text (screen readers, contrast checks). */}

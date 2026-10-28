@@ -1,0 +1,174 @@
+// The Worker's page routes in the real Workers runtime (wrangler's local dev server: HTMLRewriter, Cache API, D1),
+// with a small stand-in for the built app as its static assets: status codes, per-route meta tags, the profile
+// page's embedded data, the sitemap.
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { build } from 'esbuild';
+import { getPlatformProxy, unstable_dev, type Unstable_DevWorker } from 'wrangler';
+
+const apiDir = path.resolve(import.meta.dirname, '..');
+
+/** A small index.html shaped like the real build: template meta tags, landing JSON-LD and a prerendered root. */
+const SHELL = `<!doctype html><html><head><title>tokenburn · landing</title>
+<meta name="description" content="Landing description"><link rel="canonical" href="https://tokenburn.pages.dev/">
+<meta property="og:title" content="Landing"><meta property="og:type" content="website"><meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">{"@type":"FAQPage"}</script></head>
+<body><div id="root"><main><h1>Every token you burn</h1></main></div></body></html>`;
+
+let tmp: string;
+let worker: Unstable_DevWorker;
+const get = (p: string, init?: RequestInit) => worker.fetch(p, { redirect: 'manual', ...init } as any) as unknown as Promise<Response>;
+const page = async (p: string) => {
+  const res = await get(p);
+  return { res, html: await res.text() };
+};
+const count = (html: string, s: string) => html.split(s).length - 1;
+
+beforeAll(async () => {
+  tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tb-worker-'));
+  // The built app, as Pages serves it: files by path, index.html for any other path (single-page-application).
+  fs.mkdirSync(path.join(tmp, 'public/assets'), { recursive: true });
+  fs.writeFileSync(path.join(tmp, 'public/index.html'), SHELL);
+  fs.writeFileSync(path.join(tmp, 'public/assets/app-abc123.js'), 'console.log(1)');
+  await build({
+    entryPoints: [path.join(apiDir, 'src/index.ts')], bundle: true, format: 'esm', platform: 'neutral', target: 'es2022',
+    outfile: path.join(tmp, 'worker.js'), logLevel: 'error',
+  });
+  const config = path.join(tmp, 'wrangler.json');
+  fs.writeFileSync(config, JSON.stringify({
+    name: 'tokenburn-test',
+    main: 'worker.js',
+    compatibility_date: '2025-09-01',
+    assets: { directory: 'public', binding: 'ASSETS', not_found_handling: 'single-page-application', run_worker_first: true },
+    d1_databases: [{ binding: 'DB', database_name: 'tokenburn', database_id: 'local-test' }],
+  }));
+  const persist = path.join(tmp, 'state');
+
+  // Schema and fixtures, written to the same local D1 the dev server then reads.
+  const proxy = await getPlatformProxy<{ DB: D1Database }>({ configPath: config, persist: { path: path.join(persist, 'v3') } }); // unstable_dev's persistTo adds v3/
+  const db = proxy.env.DB;
+  for (const file of fs.readdirSync(path.join(apiDir, 'migrations')).sort()) {
+    const sql = fs.readFileSync(path.join(apiDir, 'migrations', file), 'utf8').replace(/--.*$/gm, '');
+    for (const stmt of sql.split(';').map((x) => x.trim()).filter(Boolean)) await db.prepare(stmt).run();
+  }
+  const t = new Date().toISOString();
+  await db.batch([
+    db.prepare("INSERT INTO users (id, github_id, github_login, username, created_at) VALUES ('u1', 1, 'alice-gh', 'alice', ?)").bind(t),
+    db.prepare("INSERT INTO users (id, github_id, github_login, username, created_at) VALUES ('u2', 2, 'bob-gh', 'bob', ?)").bind(t),
+    // A display name trying to break out of the embedded <script> and the summary HTML.
+    db.prepare(`INSERT INTO profiles (user_id, is_public, display_name, show_providers, show_models, show_token_totals, show_streaks, updated_at)
+                VALUES ('u1', 1, '</script><script>alert(1)</script>', 1, 1, 1, 1, ?)`).bind(t),
+    db.prepare("INSERT INTO profiles (user_id, is_public, updated_at) VALUES ('u2', 0, ?)").bind(t),
+  ]);
+  await proxy.dispose();
+
+  worker = await unstable_dev(path.join(tmp, 'worker.js'), {
+    config, persistTo: persist, logLevel: 'error', experimental: { disableExperimentalWarning: true },
+  });
+}, 60_000);
+
+afterAll(async () => {
+  await worker?.stop();
+  if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+describe('landing and app routes', () => {
+  it('serves / as built: prerendered content and its structured data', async () => {
+    const { res, html } = await page('/');
+    expect(res.status).toBe(200);
+    expect(html).toContain('<h1>Every token you burn</h1>');
+    expect(html).toContain('FAQPage');
+  });
+
+  it('serves app routes as a bare, noindexed shell with one set of meta tags', async () => {
+    for (const p of ['/dashboard', '/dashboard/settings', '/welcome', '/settings']) {
+      const { res, html } = await page(p);
+      expect(res.status, p).toBe(200);
+      expect(html, p).toContain('<div id="root"></div>');
+      expect(html, p).not.toContain('FAQPage');
+      expect(html, p).toContain('<meta name="robots" content="noindex">');
+      expect(count(html, 'name="description"'), p).toBe(1);
+      expect(count(html, 'rel="canonical"'), p).toBe(0);
+    }
+  });
+
+  it('answers unknown paths with a real 404', async () => {
+    const { res, html } = await page('/no-such-page');
+    expect(res.status).toBe(404);
+    expect(html).toContain('<title>Not found · tokenburn</title>');
+    expect(html).toContain('noindex');
+    expect(html).toContain('<div id="root"></div>');
+  });
+
+  it('caches content-hashed assets for good', async () => {
+    const res = await get('/assets/app-abc123.js');
+    expect(res.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+    await res.text();
+  });
+});
+
+describe('/@username', () => {
+  it('redirects other spellings to the one canonical URL', async () => {
+    for (const p of ['/@Alice', '/@alice/', '/%40alice']) {
+      const res = await get(p);
+      expect(res.status, p).toBe(301);
+      expect(res.headers.get('location'), p).toBe('/@alice');
+      await res.text();
+    }
+  });
+
+  it('renders a public profile: its own meta, canonical, JSON-LD, data and crawler summary', async () => {
+    const { res, html } = await page('/@alice');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('public, max-age=60');
+    expect(html).toContain('<title>@alice · AI coding usage</title>');
+    expect(count(html, 'name="description"')).toBe(1);
+    expect(count(html, 'property="og:title"')).toBe(1);
+    expect(html).not.toContain('Landing description');
+    expect(html).toContain('<link rel="canonical" href="https://tokenburn.pages.dev/@alice">');
+    expect(html).toContain('<meta property="og:type" content="profile">');
+    expect(html).toContain('"@type":"ProfilePage"');
+    expect(html).not.toContain('FAQPage');
+    expect(html).not.toContain('Every token you burn');
+    const data = /<script type="application\/json" id="profile-data">(.*?)<\/script>/.exec(html)?.[1];
+    expect(JSON.parse(data!).username).toBe('alice');
+    expect(html).toMatch(/<div id="root"><article [^>]*><h1>/);
+  });
+
+  it('escapes owner-provided text everywhere it lands', async () => {
+    const { html } = await page('/@alice');
+    // Only the shell's own JSON-LD/data scripts open; the display name never closes or opens one.
+    expect(count(html, '<script>alert(1)')).toBe(0);
+    expect(html).toContain('&lt;/script&gt;&lt;script&gt;alert(1)&lt;/script&gt; · AI coding usage</h1>');
+    expect(html).toContain('\\u003c/script>\\u003cscript>alert(1)\\u003c/script>');
+  });
+
+  it('404s private, missing and malformed profiles without leaking data', async () => {
+    for (const p of ['/@bob', '/@nobody', '/@ab']) {
+      const { res, html } = await page(p);
+      expect(res.status, p).toBe(404);
+      expect(html, p).toContain('noindex');
+      expect(html, p).not.toContain('profile-data');
+      expect(html, p).not.toContain('bob-gh');
+    }
+  });
+});
+
+describe('sitemap and API errors', () => {
+  it('lists the landing page and public profiles only', async () => {
+    const res = await get('/sitemap.xml');
+    expect(res.headers.get('content-type')).toContain('application/xml');
+    const xml = await res.text();
+    expect(xml).toContain('<loc>https://tokenburn.pages.dev/</loc>');
+    expect(xml).toContain('<loc>https://tokenburn.pages.dev/@alice</loc>');
+    expect(xml).not.toContain('@bob');
+  });
+
+  it('rejects a JSON body that is not an object with 400, not 500', async () => {
+    const res = await get('/api/login/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: 'null' });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'Expected a JSON object' });
+  });
+});

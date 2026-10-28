@@ -35,7 +35,12 @@ export function readNewLines(
     return { read: false, bytes: 0 };
   }
   let bytes = 0;
-  const fd = fs.openSync(file, 'r');
+  let fd: number;
+  try {
+    fd = fs.openSync(file, 'r');
+  } catch {
+    return { read: false, bytes: 0 }; // unreadable (say root-owned) or deleted since listing: skip, retry next run
+  }
   try {
     let pending = Buffer.alloc(0);
     let pos = state.offset;

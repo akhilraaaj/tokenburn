@@ -2,6 +2,27 @@
 
 > tokenburn tracks AI coding usage across tools (Claude Code, Codex CLI, Cursor, Gemini CLI, OpenCode, Grok CLI, Hermes Agent, OpenRouter). A small CLI reads each tool's local usage logs and syncs only daily token totals; prompts and code never leave the machine. Users get a private dashboard and an optional public profile at /@username.
 
-- Install: `npm install -g use-tokenburn && tokenburn setup`
-- Public profile data: GET /api/public/{username} (JSON, only fields the owner chose to show)
-- Costs are estimates at public API list prices, labeled by source (billed, tool estimate or list price)
+## Get started
+
+- Install: `npm install -g use-tokenburn` (macOS, Linux, Windows; Node.js 22.18+)
+- Set up: `tokenburn setup` signs in with GitHub, shows what was found and exactly what will upload, asks before the first upload, then turns on automatic sync (the OS runs a quick sync every 30 minutes; nothing stays running in between)
+- See numbers in the terminal: `tokenburn stats`
+- Publish a profile: `tokenburn profile public`; choose fields with `tokenburn profile show models,tokens,trend`
+
+## What is uploaded
+
+- Uploaded: tokens per model per day, request counts, hashed session ids, Cursor and OpenRouter usage rows
+- Never uploaded: prompts and responses, source code, file paths, project and machine names, API keys
+
+## FAQ
+
+- Are prompts or code uploaded? No. Only daily totals per model, request counts and hashed session ids.
+- Is my profile public? Not until you publish it from Settings or with `tokenburn profile public`, and you pick each field it shows.
+- How is cost estimated? The provider's billed amount where reported (OpenRouter), otherwise the tool's own estimate, otherwise public API list prices. It is not what a subscription costs, and it is always labeled as an estimate.
+- Can I delete everything? Yes. Deleting the account in Settings removes the profile and all uploaded usage; `tokenburn forget` clears local data on each machine.
+
+## Public data
+
+- Profile page: https://tokenburn.pages.dev/@{username}
+- Profile JSON: GET https://tokenburn.pages.dev/api/public/{username} (only the fields the owner chose to show)
+- Sitemap of public profiles: https://tokenburn.pages.dev/sitemap.xml

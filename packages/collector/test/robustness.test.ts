@@ -12,7 +12,7 @@ let tmp: string;
 let store: Store;
 const cfg: Config = {
   api_url: 'http://x', device_token: 't', device_id: 'd', previous_token: null, session_salt: 'salt', extra_dirs: {},
-  billing_overrides: {}, first_sync_approved: true, cursor_auto_import: false, downloads_dir: null, openrouter_key: null,
+  billing_overrides: {}, claude_api_key_seen: false, first_sync_approved: true, cursor_auto_import: false, downloads_dir: null, openrouter_key: null,
 };
 const rec = (key: string, occurred_at: string): UsageRecord => ({
   provider: 'claude_code', model_id: 'claude-opus-5-5', occurred_at, session_id: 's-' + key, input_tokens: 1, output_tokens: 2,
@@ -63,6 +63,29 @@ describe('sync robustness', () => {
     expect(release).not.toBeNull();
     release?.();
     fs.writeFileSync(file, `${process.ppid} ${Date.now()}`); // a live pid, taken just now
+    expect(acquireLock()).toBeNull();
+  });
+});
+
+describe('state that is unreadable for a moment', () => {
+  it('refuses to replace a config it cannot parse (it would lose the sign-in and salt)', async () => {
+    const { loadConfig, saveConfig } = await import('../src/config.ts');
+    saveConfig(cfg);
+    const file = path.join(tmp, 'state', 'config.json');
+    fs.writeFileSync(file, ''); // as seen mid-write by an older, non-atomic writer
+    expect(() => loadConfig()).toThrow(/Can't read/);
+    fs.writeFileSync(file, JSON.stringify(cfg));
+    expect(loadConfig().device_token).toBe('t');
+  });
+
+  it('a missing config still starts fresh', async () => {
+    const { loadConfig } = await import('../src/config.ts');
+    expect(loadConfig().device_token).toBeNull();
+  });
+
+  it('reclaims nothing from a lock file that is still being written', () => {
+    fs.mkdirSync(path.join(tmp, 'state'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'state', 'sync.lock'), '');
     expect(acquireLock()).toBeNull();
   });
 });

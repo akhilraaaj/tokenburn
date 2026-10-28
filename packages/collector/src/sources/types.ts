@@ -15,6 +15,8 @@ export interface SourceContext {
   /** Extra directories per provider, from `tokenburn config add-dir`. */
   extraDirs: Partial<Record<Provider, string[]>>;
   billingOverrides: Partial<Record<Provider, BillingMode>>;
+  /** ANTHROPIC_API_KEY was set when tokenburn last ran from the user's shell (see Config.claude_api_key_seen). */
+  claudeApiKeySeen?: boolean;
 }
 
 /** A device-scoped source that reads files on this machine. */

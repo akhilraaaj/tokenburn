@@ -7,6 +7,7 @@ import { Pills } from '@/components/pills';
 import { UsageChart } from '@/components/usage-chart';
 import { daysFrom, METRIC_LABEL, modelDisplayName, providerLabel, rowTokens, seriesColor, seriesKey, type Metric, type Row } from '@/lib/series.ts';
 import { cn } from '@/lib/utils';
+import { nowMs } from '@/lib/clock';
 
 /** Tokens when the owner shares them, otherwise requests (always present). */
 const valueOf = (r: Row, tokens: boolean) => (tokens ? rowTokens(r) : r.events);
@@ -81,7 +82,7 @@ export function ContributionGraph({ days, since, tokens }: {
   const maxWeeks = Math.ceil((daysFrom(since).length + 6) / 7);
   const weeks = Math.max(4, Math.min(fit || 26, maxWeeks));
   // Whole weeks ending with the current one, so the newest column is this week.
-  const today = new Date();
+  const today = new Date(nowMs());
   const from = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - today.getUTCDay() - (weeks - 1) * 7))
     .toISOString().slice(0, 10);
 
@@ -536,7 +537,7 @@ export function DailyBarsCard({ rows, since, metric, colorOf }: { rows: Row[]; s
   const options = DAY_RANGES.filter(([, n], i) => i === 0 || n <= available + 29);
   const [range, setRange] = useState<DayRange>('30d');
   const [, n] = options.find(([k]) => k === range) ?? options[options.length - 1];
-  const cut = new Date(Date.now() - (n - 1) * 864e5).toISOString().slice(0, 10);
+  const cut = new Date(nowMs() - (n - 1) * 864e5).toISOString().slice(0, 10);
   const from = cut < since ? since : cut;
   return (
     <Widget

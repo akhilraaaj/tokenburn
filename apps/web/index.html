@@ -4,15 +4,29 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
-    <meta name="theme-color" content="#121211" />
+    <meta name="theme-color" content="#121211" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f6f6f4" media="(prefers-color-scheme: light)" />
     <title>tokenburn · AI coding usage, tracked locally</title>
-    <meta name="description" content="Track AI coding usage across Claude Code, Cursor and Codex on your machine. Private dashboard for tokens, models and cost. Your code never leaves." />
+    <!-- The Worker rewrites the description, canonical and Open Graph tags per route (apps/api/src/meta.ts). -->
+    <meta name="description" content="Track AI coding usage across Claude Code, Cursor, Codex, Gemini CLI and more on your machine. A private dashboard for tokens, models, streaks and estimated cost. Your code never leaves." />
+    <link rel="canonical" href="https://tokenburn.pages.dev/" />
+    <meta property="og:site_name" content="tokenburn" />
     <meta property="og:title" content="tokenburn · AI coding usage, tracked locally" />
-    <meta property="og:description" content="Track AI coding usage across Claude Code, Cursor and Codex on your machine. Private dashboard for tokens, models and cost. Your code never leaves." />
+    <meta property="og:description" content="Track AI coding usage across Claude Code, Cursor, Codex, Gemini CLI and more on your machine. A private dashboard for tokens, models, streaks and estimated cost. Your code never leaves." />
     <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary" />
+    <meta property="og:url" content="https://tokenburn.pages.dev/" />
+    <meta property="og:image" content="https://tokenburn.pages.dev/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="tokenburn: every token you burn, in one place" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="tokenburn · AI coding usage, tracked locally" />
+    <meta name="twitter:description" content="Track AI coding usage across Claude Code, Cursor, Codex, Gemini CLI and more on your machine. Your code never leaves." />
+    <meta name="twitter:image" content="https://tokenburn.pages.dev/og.png" />
     <script src="/theme.js"></script>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='1' y='8' width='3' height='7' rx='1' fill='%232a78d6'/><rect x='6.5' y='4' width='3' height='11' rx='1' fill='%232a78d6'/><path d='M12 14V5.4c0-1.2.9-1.9 1.4-4.4.9 1.4 1.6 2.8 1.6 4.4V14a1 1 0 0 1-1 1h-1a1 1 0 0 1-1-1Z' fill='%23eb6834'/><path d='M13.5 4.6c.4.6.7 1.1.7 1.7a.7.7 0 0 1-1.4 0c0-.6.3-1 .7-1.7Z' fill='%23eda100'/></svg>" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
   </head>
   <body>
     <div id="root"></div>

@@ -20,10 +20,12 @@ export function claudeProjectRoots(extra: string[] = []): string[] {
 
 /**
  * Billing mode from the local account config, reading only `oauthAccount.billingType` from
- * ~/.claude.json and whether ANTHROPIC_API_KEY is set (never its value).
+ * ~/.claude.json and whether ANTHROPIC_API_KEY is set (never its value). `apiKeySeen`: the key was set in an earlier
+ * run from the user's shell; scheduled runs don't get shell variables, so without it they'd disagree with manual runs.
  */
-export function detectClaudeBillingMode(): { mode: BillingMode; basis: string } {
+export function detectClaudeBillingMode(apiKeySeen = false): { mode: BillingMode; basis: string } {
   if (process.env.ANTHROPIC_API_KEY) return { mode: 'api', basis: 'ANTHROPIC_API_KEY is set' };
+  if (apiKeySeen) return { mode: 'api', basis: 'ANTHROPIC_API_KEY was set in your shell (remembered for scheduled runs)' };
   const candidates = [
     ...(process.env.CLAUDE_CONFIG_DIR ?? '').split(',').filter(Boolean).map((d) => path.join(d.trim(), '.claude.json')),
     path.join(os.homedir(), '.claude.json'),
@@ -73,7 +75,18 @@ export const claudeCodeSource: LocalSource = {
   provider: 'claude_code',
   label: 'Claude Code',
   roots: (ctx: SourceContext) => claudeProjectRoots(ctx.extraDirs.claude_code ?? []),
-  billing: (ctx) => (ctx.billingOverrides.claude_code ? { mode: ctx.billingOverrides.claude_code, basis: 'set by you (config)' } : detectClaudeBillingMode()),
+  billing: (ctx) => (ctx.billingOverrides.claude_code ? { mode: ctx.billingOverrides.claude_code, basis: 'set by you (config)' } : detectClaudeBillingMode(ctx.claudeApiKeySeen)),
   scan: (store, ctx, onlyFiles) => scanClaudeCode(store, claudeCodeSource.billing(ctx).mode, ctx.extraDirs.claude_code ?? [], onlyFiles),
   watchExtensions: ['.jsonl'],
 };
+
+/**
+ * Claude Code rows are stamped with the billing mode detected when they're read. When that changes (an override, or
+ * ANTHROPIC_API_KEY first seen), earlier rows are restamped too, so a day is never split across two modes.
+ */
+export function syncClaudeBillingMode(store: Store, ctx: SourceContext) {
+  const mode = claudeCodeSource.billing(ctx).mode;
+  if (store.getMeta('claude_code_billing_mode') === mode) return;
+  store.setBillingMode('claude_code', mode);
+  store.setMeta('claude_code_billing_mode', mode);
+}
