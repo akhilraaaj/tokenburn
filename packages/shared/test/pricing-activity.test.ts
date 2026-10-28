@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activityStats, aggregateDaily, contributionDays, CONTRIBUTION_DAYS, compactPriceList, estimateCost, findPrice, type UsageRecord } from '../src/index.ts';
+import { activityStats, aggregateDaily, contributionDays, CONTRIBUTION_DAYS, compactPriceList, cursorPriceIds, estimateCost, findPrice, type UsageRecord } from '../src/index.ts';
 
 // Shape copied from LiteLLM's model_prices_and_context_window.json entries (values as of 2026-10-25).
 const table = compactPriceList({
@@ -43,6 +43,49 @@ describe('pricing', () => {
     expect(buckets.find((b) => b.model_id === 'mystery')).toMatchObject({ cost_usd: null, unpriced_events: 1 });
     const or = buckets.find((b) => b.provider === 'openrouter')!;
     expect(or).toMatchObject({ cost_usd: 0.5, billed_cost_usd: 0.5, unpriced_events: 0 });
+  });
+});
+
+describe('Cursor model names', () => {
+  const t = compactPriceList({
+    'claude-opus-5-5': { input_cost_per_token: 4e-6, output_cost_per_token: 2e-5, cache_read_input_token_cost: 2e-7, cache_creation_input_token_cost: 5e-6 },
+    'claude-sonnet-4-5': { input_cost_per_token: 3e-6, output_cost_per_token: 1.5e-5 },
+    'xai/grok-4.6': { input_cost_per_token: 2e-6, output_cost_per_token: 6e-6 },
+    'xai/grok-4-fast': { input_cost_per_token: 2e-7, output_cost_per_token: 5e-7 },
+    'xai/grok-4': { input_cost_per_token: 3e-6, output_cost_per_token: 1.5e-5 },
+    'gemini-2.5-flash': { input_cost_per_token: 3e-7, output_cost_per_token: 2.5e-6 },
+  });
+  const cur = (model_id: string) => rec({ provider: 'cursor', usage_source: 'cursor_csv', model_id, session_id: null });
+
+  it('looks Cursor names up under the model itself, most specific first', () => {
+    expect(cursorPriceIds('claude-4.5-sonnet-thinking')).toEqual(['claude-4.5-sonnet-thinking', 'claude-sonnet-4-5-thinking', 'claude-sonnet-4-5']);
+    expect(cursorPriceIds('cursor-grok-4.6-high-fast')).toEqual(['cursor-grok-4.6-high-fast', 'grok-4.6-high-fast', 'grok-4.6-high', 'grok-4.6']);
+    expect(cursorPriceIds('claude-opus-5-5-high-fast').at(-1)).toBe('claude-opus-5-5');
+  });
+
+  it('prices named Cursor models and keeps a suffixed model that is really listed', () => {
+    expect(estimateCost(t, cur('claude-opus-5-5-high-fast'))).toBeCloseTo(0.089, 9); // same tokens as the Claude Code row
+    expect(estimateCost(t, cur('cursor-grok-4.6-xhigh'))).not.toBeNull();
+    expect(estimateCost(t, cur('gemini-2.5-flash'))).not.toBeNull();
+    // grok-4-fast is its own (cheaper) model, so it must not fall back to grok-4's price.
+    expect(estimateCost(t, cur('grok-4-fast-high'))).toBeCloseTo(1000 * 2e-7 + 2000 * 5e-7 + 100000 * 2e-7 + 5000 * 2e-7, 9);
+  });
+
+  it("leaves Cursor's own models and auto unpriced", () => {
+    for (const m of ['auto', 'default', 'composer-2.5-fast', 'grok-bot-automation', 'agent_review']) expect(estimateCost(t, cur(m))).toBeNull();
+  });
+
+  it('never translates names from other sources', () => {
+    expect(estimateCost(t, rec({ model_id: 'claude-opus-5-5-high-fast' }))).toBeNull();
+    expect(estimateCost(t, rec({ provider: 'openrouter', usage_source: 'openrouter_activity', model_id: 'claude-4.5-sonnet-thinking' }))).toBeNull();
+  });
+
+  it('keeps the same model used through Claude Code and Cursor apart, each priced once', () => {
+    const { buckets } = aggregateDaily([rec({ dedupe_key: 'cc' }), { ...cur('claude-opus-5-5-high-fast'), dedupe_key: 'cur' }], () => true, t);
+    expect(buckets).toHaveLength(2);
+    expect(buckets.map((b) => `${b.provider}:${b.model_id}`).sort()).toEqual(['claude_code:claude-opus-5-5', 'cursor:claude-opus-5-5-high-fast']);
+    for (const b of buckets) expect(b).toMatchObject({ unpriced_events: 0 });
+    expect(buckets.reduce((a, b) => a + (b.cost_usd ?? 0), 0)).toBeCloseTo(0.178, 6);
   });
 });
 

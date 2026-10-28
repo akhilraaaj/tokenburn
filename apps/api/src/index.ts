@@ -466,6 +466,16 @@ async function cachedPublicProfile(env: Env, ctx: ExecutionContext | undefined, 
   return prof;
 }
 
+/** A GitHub user's avatar, re-served from our origin (only real image types pass), or null. */
+async function githubAvatar(githubId: number, cacheControl: string): Promise<Response | null> {
+  const gh = await fetch(`https://avatars.githubusercontent.com/u/${githubId}?s=160&v=4`).catch(() => null);
+  const type = gh?.headers.get('content-type') ?? '';
+  if (!gh?.ok || !/^image\/(png|jpeg|gif|webp)$/.test(type)) return null;
+  return new Response(gh.body, {
+    headers: { 'content-type': type, 'cache-control': cacheControl, 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'" },
+  });
+}
+
 /**
  * GitHub avatar for a public profile that shows its GitHub account, served same-origin so the page's CSP stays
  * 'self' and viewers' browsers never contact GitHub. Cached for an hour; purged at the edge on profile changes.
@@ -478,14 +488,19 @@ const publicAvatar: Route = async (req, env, p, ctx) => {
     'SELECT u.github_id FROM users u JOIN profiles p ON p.user_id = u.id WHERE u.username = ? AND p.is_public = 1 AND p.show_github = 1',
   ).bind(p.username.toLowerCase()).first<{ github_id: number }>();
   if (!row) throw new HttpError(404, 'Not found');
-  const gh = await fetch(`https://avatars.githubusercontent.com/u/${row.github_id}?s=160&v=4`).catch(() => null);
-  const type = gh?.headers.get('content-type') ?? '';
-  if (!gh?.ok || !/^image\/(png|jpeg|gif|webp)$/.test(type)) throw new HttpError(404, 'Not found');
-  const res = new Response(gh.body, {
-    headers: { 'content-type': type, 'cache-control': 'public, max-age=3600', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'" },
-  });
+  const res = await githubAvatar(row.github_id, 'public, max-age=3600');
+  if (!res) throw new HttpError(404, 'Not found');
   const put = caches.default.put(key, res.clone()).catch(() => {});
   if (ctx) ctx.waitUntil(put); else await put;
+  return res;
+};
+
+/** The signed-in user's own GitHub avatar, whatever their profile settings; only ever cached by their browser. */
+const webAvatar: Route = async (req, env) => {
+  const u = await requireWebUser(req, env);
+  const row = await env.DB.prepare('SELECT github_id FROM users WHERE id = ?').bind(u.id).first<{ github_id: number }>();
+  const res = row && (await githubAvatar(row.github_id, 'private, max-age=3600'));
+  if (!res) throw new HttpError(404, 'Not found');
   return res;
 };
 
@@ -684,6 +699,7 @@ const routes: [string, RegExp, Route][] = [
   ['GET', /^\/auth\/callback$/, authCallback],
   ['GET', /^\/(?:@|%40)(?<username>[\w-]+)\/?$/, profileShell],
   ['GET', /^\/api\/web\/session$/, webSession],
+  ['GET', /^\/api\/web\/avatar$/, webAvatar],
   ['GET', /^\/api\/web\/pending$/, webPending],
   ['POST', /^\/api\/web\/signup$/, webSignup],
   ['POST', /^\/api\/web\/signup\/cancel$/, webSignupCancel],

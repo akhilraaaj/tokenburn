@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { aggregateDaily, parseCsv, parseCursorCsv, validateRecord } from '../src/index.ts';
+import { aggregateDaily, cursorBilledCost, parseCsv, parseCursorCsv, validateRecord } from '../src/index.ts';
 
 const sample = fs.readFileSync(path.resolve(import.meta.dirname, '../../../fixtures/cursor/usage-events.sample.csv'), 'utf8');
 
@@ -32,6 +32,17 @@ describe('Cursor CSV import', () => {
     expect(r.records.find((x) => x.model_id === 'gpt-5')!.billing_mode).toBe('usage_based');
     expect(r.records.find((x) => x.model_id === 'composer-2.5')!.billing_mode).toBe('not_charged');
     expect(JSON.stringify(r.records)).not.toContain('$0.42');
+  });
+
+  it('reads the Cost column as billed only on usage-based rows', async () => {
+    const r = await parseCursorCsv(sample);
+    expect(r.records.find((x) => x.model_id === 'gpt-5')).toMatchObject({ cost_usd: 0.42, cost_kind: 'billed' });
+    const included = r.records.find((x) => x.model_id === 'auto')!;
+    expect(included.cost_usd).toBeUndefined();
+    expect(included.cost_kind).toBeUndefined();
+    expect(cursorBilledCost('$1,204.50', 'usage_based')).toBe(1204.5);
+    expect(cursorBilledCost('$0.42', 'subscription')).toBeNull();
+    expect(cursorBilledCost('Included', 'usage_based')).toBeNull();
   });
 
   it('produces stable dedupe keys across imports', async () => {

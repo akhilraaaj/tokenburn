@@ -1,21 +1,30 @@
+import type { MouseEventHandler } from 'react';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { HERMES_MARK } from './tool-logos';
 
-/** Three ascending bars: two in the first series color, the last in the second (same as the favicon). */
+/**
+ * Three ascending bars; the tallest, orange one burns: its top curls into a soft flame point with a small amber spark
+ * (same as the favicon). Inside a hovered `.group`, the spark flickers.
+ */
 export function LogoMark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 16 16" className={cn('size-5', className)} aria-hidden="true">
       <rect x="1" y="8" width="3" height="7" rx="1" fill="var(--series-1)" />
       <rect x="6.5" y="4" width="3" height="11" rx="1" fill="var(--series-1)" />
-      <rect x="12" y="1" width="3" height="14" rx="1" fill="var(--series-2)" />
+      <path d="M12 14V5.4c0-1.2.9-1.9 1.4-4.4.9 1.4 1.6 2.8 1.6 4.4V14a1 1 0 0 1-1 1h-1a1 1 0 0 1-1-1Z" fill="var(--series-2)" />
+      <path className="flame-core" d="M13.5 4.6c.4.6.7 1.1.7 1.7a.7.7 0 0 1-1.4 0c0-.6.3-1 .7-1.7Z" fill="var(--series-4)" />
     </svg>
   );
 }
 
-export function Wordmark({ to = '/', className }: { to?: string; className?: string }) {
+export function Wordmark({ to = '/', className, onClick }: {
+  to?: string;
+  className?: string;
+  onClick?: MouseEventHandler<HTMLAnchorElement>;
+}) {
   return (
-    <Link to={to} className={cn('inline-flex items-center gap-2 font-semibold text-foreground', className)}>
+    <Link to={to} onClick={onClick} className={cn('group inline-flex items-center gap-2 font-semibold text-foreground', className)}>
       <LogoMark />
       <span>tokenburn</span>
     </Link>

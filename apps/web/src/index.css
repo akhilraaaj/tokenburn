@@ -195,4 +195,9 @@
     from { box-shadow: 0 0 0 2px color-mix(in oklab, var(--series-2) 70%, transparent), 0 0 0 8px color-mix(in oklab, var(--series-2) 18%, transparent); }
     to { box-shadow: 0 0 0 2px transparent, 0 0 0 8px transparent; }
   }
+
+  /* Logo: the flame's spark flickers while its link is hovered. */
+  .group:hover .flame-core { transform-box: fill-box; transform-origin: 50% 100%; animation: flame-flicker 0.9s ease-in-out infinite; }
+  @keyframes flame-flicker { 0%, 100% { transform: scale(1, 1); } 35% { transform: scale(0.92, 1.12); } 70% { transform: scale(1.04, 0.94); } }
+  @media (prefers-reduced-motion: reduce) { .group:hover .flame-core { animation: none; } }
 }

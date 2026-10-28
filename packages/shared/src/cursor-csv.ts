@@ -22,7 +22,7 @@ export interface CursorImportResult {
 
 type CursorField =
   | 'date' | 'kind' | 'model' | 'max_mode' | 'input_with_cache_write' | 'input_without_cache_write'
-  | 'cache_read' | 'output' | 'total' | 'user';
+  | 'cache_read' | 'output' | 'total' | 'cost' | 'user';
 
 // Normalized header text (lowercase, non-alphanumerics collapsed) → field.
 const HEADER_ALIASES: Record<string, CursorField> = {
@@ -37,6 +37,7 @@ const HEADER_ALIASES: Record<string, CursorField> = {
   cache_read: 'cache_read', cache_read_tokens: 'cache_read',
   output_tokens: 'output', output: 'output',
   total_tokens: 'total', total: 'total',
+  cost: 'cost',
   user: 'user', email: 'user', user_email: 'user',
 };
 
@@ -85,6 +86,16 @@ function parseCount(raw: string | undefined): number | null | 'invalid' {
   if (!/^\d+$/.test(s)) return 'invalid';
   const n = Number(s);
   return Number.isSafeInteger(n) ? n : 'invalid';
+}
+
+/**
+ * Cursor's Cost cell as an actual charge, or null. Only usage-based rows are billed per request; on plan rows the
+ * cell says "Included" (or holds a notional figure), which is not what the user paid, so it is never read as one.
+ */
+export function cursorBilledCost(cost: string | undefined, billing: BillingMode): number | null {
+  if (billing !== 'usage_based' || cost === undefined) return null;
+  const m = /^\$\s*(\d+(?:\.\d+)?)$/.exec(cost.trim().replace(/,/g, ''));
+  return m ? Number(m[1]) : null;
 }
 
 export function billingModeFromKind(kind: string): BillingMode {
@@ -175,6 +186,8 @@ export async function parseCursorCsv(text: string): Promise<CursorImportResult> 
     if (inWithout === null && inWith === null) input = null;
 
     const kind = (get(fields, 'kind') ?? '').trim();
+    const billing = billingModeFromKind(kind);
+    const billed = cursorBilledCost(get(fields, 'cost'), billing);
     const maxMode = (get(fields, 'max_mode') ?? '').trim().toLowerCase();
     const hasTokens = input !== null || output !== null;
     const occurred = new Date(t).toISOString();
@@ -195,10 +208,11 @@ export async function parseCursorCsv(text: string): Promise<CursorImportResult> 
       cache_write_tokens: cacheWrite,
       usage_source: 'cursor_csv',
       measurement_type: hasTokens ? 'measured' : 'unknown',
-      billing_mode: billingModeFromKind(kind),
+      billing_mode: billing,
       dedupe_key: key,
       event_count: 1,
       synced_at: null,
+      ...(billed !== null ? { cost_usd: billed, cost_kind: 'billed' as const } : {}),
       provider_fields: {
         kind: kind || null,
         max_mode: maxMode === 'yes' || maxMode === 'true' ? true : maxMode === 'no' || maxMode === 'false' ? false : null,

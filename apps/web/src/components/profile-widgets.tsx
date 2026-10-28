@@ -363,7 +363,6 @@ export function StreakCard({ profile, since }: { profile: PublicProfile; since: 
     return daysFrom(since).map((day) => ({ label: dayLabel(day), value: (run = active.has(day) ? run + 1 : 0) }));
   }, [daily, since]);
   const current = h.currentStreak ?? 0;
-  const top = points ? points.reduce((best, p, i) => (p.value > points[best].value ? i : best), 0) : -1;
   const days = (n: number) => `${n} day${n === 1 ? '' : 's'}`;
   return (
     <TrendCard
@@ -377,7 +376,6 @@ export function StreakCard({ profile, since }: { profile: PublicProfile; since: 
           color="var(--series-4)"
           format={(v) => (v ? `Day ${v} of a streak` : 'No usage')}
           xLabels={[dayLabel(since), 'Today']}
-          mark={top >= 0 && points[top].value > 1 ? { index: top, label: `${points[top].value}-day run` } : undefined}
         />
       )}
     </TrendCard>

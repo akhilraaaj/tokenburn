@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   ArrowDown, ArrowRight, AtSign, BarChart3, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight, Coins, Flame, Globe, Laptop, Layers, Lock, RefreshCw, Terminal,
@@ -38,8 +38,8 @@ const STEPS = [
 /** Example model mix for the profile preview and the models tile. */
 const MIX = [
   { name: 'Claude Opus 5.5', tool: 'Claude Code', share: 52, color: 'var(--series-1)' },
-  { name: 'GPT-5 Codex', tool: 'Codex CLI', share: 28, color: 'var(--series-2)' },
-  { name: 'Gemini 2.5 Pro', tool: 'Gemini CLI', share: 12, color: 'var(--series-3)' },
+  { name: 'GPT-6 Astra', tool: 'Codex CLI', share: 28, color: 'var(--series-2)' },
+  { name: 'Gemini 3.8 Flash', tool: 'Gemini CLI', share: 12, color: 'var(--series-3)' },
   { name: 'Other', tool: '', share: 8, color: 'var(--series-other)' },
 ];
 
@@ -76,6 +76,23 @@ const ERRORS: Record<string, string> = {
   rate_limited: 'Too many sign-in attempts. Wait a minute and try again.',
 };
 
+/**
+ * List prices (USD per million tokens) for the example models, from the same public price list the CLI uses
+ * (LiteLLM, October 2026), so example costs are tokens × price exactly as the app computes them. Cache writes
+ * fall back to the input price where none is listed, as in estimateCost().
+ */
+const DEMO_PRICES = {
+  'claude-opus-5-5': { input: 4, output: 20, cache_read: 0.2, cache_write: 5 },
+  'gpt-6-astra': { input: 10, output: 50, cache_read: 1, cache_write: 12.5 },
+  'gemini-3.8-flash': { input: 0.75, output: 3.75, cache_read: 0.075, cache_write: 0.75 },
+} as const;
+
+type DemoTokens = { input?: number; output?: number; cache_read?: number; cache_write?: number };
+const demoCost = (model: keyof typeof DEMO_PRICES, t: DemoTokens) => {
+  const p = DEMO_PRICES[model];
+  return ((t.input ?? 0) * p.input + (t.output ?? 0) * p.output + (t.cache_read ?? 0) * p.cache_read + (t.cache_write ?? 0) * p.cache_write) / 1e6;
+};
+
 /** Illustrative data for the preview card (clearly labeled as an example on the page). */
 function exampleRows(): { rows: Row[]; since: string } {
   const since = new Date(Date.now() - 29 * 864e5).toISOString().slice(0, 10);
@@ -84,24 +101,27 @@ function exampleRows(): { rows: Row[]; since: string } {
   shape.forEach((v, i) => {
     const day = new Date(Date.parse(since) + i * 864e5).toISOString().slice(0, 10);
     if (!v) return;
-    rows.push({ day, provider: 'claude_code', model_id: 'claude-opus-5-5', events: v * 40, output_tokens: v * 52000, cache_read_tokens: v * 2.1e6, cost_usd: v * 1.9 });
-    rows.push({ day, provider: 'codex', model_id: 'gpt-5-codex', events: v * 12, output_tokens: Math.round(v * 21000 * (1 + (i % 3) / 3)), cache_read_tokens: v * 6e5, cost_usd: v * 0.6 });
-    if (i % 4 === 0) rows.push({ day, provider: 'cursor', model_id: 'auto', events: 6, output_tokens: 38000, cache_read_tokens: 9e5, cost_usd: 0.4 });
+    const opus = { output: v * 52000, cache_read: v * 2.1e6 };
+    const astra = { output: Math.round(v * 21000 * (1 + (i % 3) / 3)), cache_read: v * 6e5 };
+    const flash = { output: 38000, cache_read: 9e5 };
+    rows.push({ day, provider: 'claude_code', model_id: 'claude-opus-5-5', events: v * 40, output_tokens: opus.output, cache_read_tokens: opus.cache_read, cost_usd: demoCost('claude-opus-5-5', opus) });
+    rows.push({ day, provider: 'codex', model_id: 'gpt-6-astra', events: v * 12, output_tokens: astra.output, cache_read_tokens: astra.cache_read, cost_usd: demoCost('gpt-6-astra', astra) });
+    if (i % 4 === 0) rows.push({ day, provider: 'gemini_cli', model_id: 'gemini-3.8-flash', events: 6, output_tokens: flash.output, cache_read_tokens: flash.cache_read, cost_usd: demoCost('gemini-3.8-flash', flash) });
   });
   return { rows, since };
 }
 
 const EXAMPLE_MODELS = [
-  { provider: 'claude_code', usage_source: 'claude_code_jsonl', model_id: 'claude-opus-5-5', events: 38, out: 52000, price: 0.31 },
-  { provider: 'codex', usage_source: 'codex_jsonl', model_id: 'gpt-5-codex', events: 14, out: 24000, price: 0.12 },
-  { provider: 'gemini_cli', usage_source: 'gemini_cli_jsonl', model_id: 'gemini-2.5-pro', events: 6, out: 11000, price: 0.05 },
-];
+  { provider: 'claude_code', usage_source: 'claude_code_jsonl', model_id: 'claude-opus-5-5', events: 38, out: 52000 },
+  { provider: 'codex', usage_source: 'codex_jsonl', model_id: 'gpt-6-astra', events: 14, out: 24000 },
+  { provider: 'gemini_cli', usage_source: 'gemini_cli_jsonl', model_id: 'gemini-3.8-flash', events: 6, out: 11000 },
+] as const;
 
 /**
  * An example public profile, built the way the server builds a real one: 90 days of daily rows, then only the
  * fields the switches allow (mirrors publicProfile() in apps/api).
  */
-function exampleProfile(handle: string, f: Shows): PublicProfile {
+function exampleProfile(handle: string, f: Shows, avatarUrl = ''): PublicProfile {
   const today = Date.parse(new Date().toISOString().slice(0, 10));
   const dayOf = (back: number) => new Date(today - back * 864e5).toISOString().slice(0, 10);
   const since = dayOf(89);
@@ -117,7 +137,8 @@ function exampleProfile(handle: string, f: Shows): PublicProfile {
       daily.push({
         day: dayOf(back), provider: m.provider, usage_source: m.usage_source, model_id: m.model_id, billing_mode: 'subscription',
         measurement_type: 'measured', events, input_tokens: output * 3, output_tokens: output, cache_read_tokens: output * 40,
-        cache_write_tokens: output * 4, incomplete_events: 0, cost_usd: Math.round(events * m.price * 100) / 100, billed_cost_usd: null,
+        cache_write_tokens: output * 4, incomplete_events: 0, billed_cost_usd: null,
+        cost_usd: Math.round(demoCost(m.model_id, { input: output * 3, output, cache_read: output * 40, cache_write: output * 4 }) * 100) / 100,
         unpriced_events: 0,
       });
     });
@@ -126,7 +147,7 @@ function exampleProfile(handle: string, f: Shows): PublicProfile {
   const shows = { tokens: f.show_token_totals, costs: f.show_costs, streaks: f.show_streaks };
   const out: PublicProfile = { username: handle, display_name: null, since, shows };
   if (f.show_daily_trend || f.show_streaks) out.first_day = daily[0].day;
-  if (f.show_github) out.github = { login: handle, avatar_url: '' };
+  if (f.show_github) out.github = { login: handle, avatar_url: avatarUrl };
   const pick = (r: DailyRow) => ({
     ...(f.show_providers ? { provider: r.provider, usage_source: r.usage_source } : {}),
     ...(f.show_models ? { model_id: r.model_id } : {}),
@@ -205,17 +226,42 @@ function MiniContributions() {
 
 const cleanHandle = (s: string) => s.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 24);
 
+/**
+ * A GitHub-style identicon for the signed-out demo profile: a mirrored 5×5 pixel pattern in one brand color,
+ * derived from the handle, so typing a name gives the example its own avatar. Built as a data: SVG because the
+ * page's CSP only allows same-origin and data: images.
+ */
+function identicon(seed: string): string {
+  let h = 2166136261; // FNV-1a
+  for (const ch of seed) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+  const colors = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#6250d6'];
+  const color = colors[h % colors.length];
+  let cells = '';
+  for (let i = 0; i < 15; i++) {
+    if (!((h >>> (i + 3)) & 1)) continue;
+    const x = Math.floor(i / 5), y = i % 5;
+    cells += `<rect x='${x}' y='${y}' width='1' height='1'/>`;
+    if (x < 2) cells += `<rect x='${4 - x}' y='${y}' width='1' height='1'/>`;
+  }
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='-0.6 -0.6 6.2 6.2' shape-rendering='crispEdges'><rect x='-0.6' y='-0.6' width='6.2' height='6.2' fill='#f0efec'/><g fill='${color}'>${cells}</g></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
 export function Landing() {
   const { user } = useSession();
   const [params] = useSearchParams();
+  const { state } = useLocation() as { state: { section?: string } | null };
   const deleted = params.get('deleted') === '1';
   const navigate = useNavigate();
   const example = useMemo(exampleRows, []);
   const colorOf = useMemo(() => colorMap(example.rows), [example]);
   const [handle, setHandle] = useState('');
-  const shown = user?.username ?? (handle || 'you');
+  const shown = user?.username ?? (handle || 'yourname');
   const [shows, setShows] = useState(DEFAULT_SHOWS);
-  const profile = useMemo(() => exampleProfile(shown, shows), [shown, shows]);
+  // Signed in, the example profile wears the visitor's own GitHub avatar (their numbers stay examples); signed out,
+  // an identicon made from the handle they're typing.
+  const avatarUrl = useMemo(() => (user ? '/api/web/avatar' : identicon(shown)), [user, shown]);
+  const profile = useMemo(() => exampleProfile(shown, shows, avatarUrl), [shown, shows, avatarUrl]);
 
   // Sign-in failures land here as ?error=… — toast once, then drop the param so refresh doesn't re-fire.
   const errorToasted = useRef(false);
@@ -230,6 +276,24 @@ export function Landing() {
     const qs = next.toString();
     navigate(qs ? `/?${qs}` : '/', { replace: true });
   }, [params, navigate]);
+
+  // Footer/header section jumps avoid #hashes in the URL; scroll here, then clear router state.
+  // Also strip a leftover hash if someone arrived with /#faq.
+  useEffect(() => {
+    if (window.location.hash) {
+      const id = window.location.hash.slice(1);
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+      requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+      return;
+    }
+    const id = state?.section;
+    if (!id) return;
+    const t = window.setTimeout(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      navigate('.', { replace: true, state: null });
+    }, 50);
+    return () => window.clearTimeout(t);
+  }, [state?.section, navigate]);
 
   return (
     <div className="relative overflow-x-clip">
@@ -279,7 +343,7 @@ export function Landing() {
 
           {/* Product preview + tools */}
           <section className="grid grid-cols-1 gap-16 animate-in fade-in slide-in-from-bottom-6 sm:gap-20 duration-1000">
-            <HeroDashboard rows={example.rows} since={example.since} colorOf={colorOf} handle={shown} />
+            <HeroDashboard rows={example.rows} since={example.since} colorOf={colorOf} handle={shown} labeled={!!user} />
             <div className="grid gap-6">
               <p className="text-center text-xs font-medium tracking-widest text-subtle uppercase">Works with the tools you already use</p>
               <div className="marquee overflow-hidden">
@@ -309,7 +373,7 @@ export function Landing() {
               <ProfileControls shows={shows} onChange={(k, v) => setShows({ ...shows, [k]: v })} />
               <div className="hidden lg:grid"><ProfileCta /></div>
             </div>
-            <ProfilePreview profile={profile} />
+            <ProfilePreview profile={profile} labeled={!!user} />
           </div>
           <div className="grid lg:hidden"><ProfileCta /></div>
         </section>
@@ -481,7 +545,7 @@ function ToolHeadline() {
     <>
       Every <span className="whitespace-nowrap">token <HeadlineIcon active={shown[0]} /></span>{' '}
       you <span className="whitespace-nowrap">burn, <HeadlineIcon active={shown[1]} /></span>{' '}
-      <span className="whitespace-nowrap">in one <HeadlineIcon active={shown[2]} /> place.</span>
+      <span className="whitespace-nowrap">in one <HeadlineIcon active={shown[2]} /> place</span>
     </>
   );
 }
@@ -676,7 +740,15 @@ function WindowDots() {
  * The real profile page inside a browser frame, fed example data. It never scrolls on its own (that would trap the
  * page scroll); below lg it opens capped, with a button to show the rest.
  */
-function ProfilePreview({ profile }: { profile: PublicProfile }) {
+/**
+ * Marks a demo as made-up numbers. Shown only to signed-in visitors: their own handle and avatar appear in the
+ * demos, so without it the example stats could pass for theirs.
+ */
+function ExampleBadge() {
+  return <Badge variant="secondary" className="flex-none font-normal">Example data</Badge>;
+}
+
+function ProfilePreview({ profile, labeled }: { profile: PublicProfile; labeled: boolean }) {
   const [expanded, setExpanded] = useState(false);
   return (
     <div className="relative flex flex-col overflow-clip rounded-xl border bg-background shadow-sm">
@@ -686,6 +758,7 @@ function ProfilePreview({ profile }: { profile: PublicProfile }) {
           <Lock className="size-3 flex-none text-subtle" />
           <span className="truncate">{window.location.host}/<span className="text-foreground">@{profile.username}</span></span>
         </div>
+        {labeled && <ExampleBadge />}
       </div>
       <div className={cn(!expanded && 'max-lg:max-h-[44rem]')}>
         <ProfileHeader />
@@ -708,7 +781,7 @@ function ProfilePreview({ profile }: { profile: PublicProfile }) {
  * The dashboard's Overview as it really looks (top bar, stat cards, daily chart), built from the same components
  * and fed example data, so the hero always matches the app.
  */
-function HeroDashboard({ rows, since, colorOf, handle }: { rows: Row[]; since: string; colorOf: (k: string) => number; handle: string }) {
+function HeroDashboard({ rows, since, colorOf, handle, labeled }: { rows: Row[]; since: string; colorOf: (k: string) => number; handle: string; labeled: boolean }) {
   const [range, setRange] = useState<'7' | '30'>('30');
   const [metric, setMetric] = useState<Metric>('output');
   const from = range === '7' ? new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10) : since;
@@ -721,6 +794,7 @@ function HeroDashboard({ rows, since, colorOf, handle }: { rows: Row[]; since: s
       <div className="flex items-center gap-2 border-b bg-card px-4 py-2.5">
         <WindowDots />
         <span className="ml-3 truncate font-mono text-xs text-subtle">{window.location.host}/dashboard</span>
+        {labeled && <span className="ml-auto"><ExampleBadge /></span>}
       </div>
       <div className="flex text-left">
         {/* Content */}
@@ -926,8 +1000,8 @@ function terminalScripts(handle: string, host: string): TermLine[][] {
     [
       { cmd: 'tokenburn stats' },
       { out: <>{T.bold('Your usage · last 30 days')} {T.dim('(UTC, this machine)')}</> },
-      { out: <>  {T.bold('412M')} total tokens</> },
-      { out: <>  {T.bold('$186')} estimated cost {T.dim('(API list prices, not your bill)')}</> },
+      { out: <>  {T.bold('597M')} total tokens</> },
+      { out: <>  {T.bold('$735')} estimated cost {T.dim('(API list prices, not your bill)')}</> },
       { out: <>  Best day Oct 19 · current streak {T.bold('12 days')} · longest 21 days</> },
       { out: <>{T.orange('■')} {T.bold('Claude Code')}  {T.dim('local transcripts')}</>, gap: true },
       { out: <>  {T.blue('▂▃▅▇▆▃▅█▇▅▃▆▇█▅▆')}  {T.dim('output/day')}</> },

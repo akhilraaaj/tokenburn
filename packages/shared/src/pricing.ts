@@ -30,6 +30,30 @@ export function compactPriceList(raw: Record<string, any>): PriceTable {
 
 const PREFIXES = ['', 'anthropic/', 'openai/', 'gemini/', 'xai/', 'deepseek/', 'mistral/'];
 
+// Cursor's own models (and "auto", which doesn't say what served the request) have no public list price.
+const CURSOR_UNPRICED = /^(?:auto|default|agent_review|composer(?:-.*)?|grok-bot-.*)$/;
+// Effort and speed settings Cursor appends to a model's name; the list prices the model itself.
+const CURSOR_VARIANT = /-(?:low|medium|high|xhigh|max|fast|thinking)$/;
+
+/**
+ * Ids to look up for a Cursor model, most specific first. Cursor names models its own way
+ * (`cursor-grok-4.6-high-fast`, `claude-4.5-sonnet-thinking`), so the list price is found under the model's
+ * own name: drop the `cursor-` prefix, put Claude's family before its version, then shed one effort/speed
+ * suffix at a time. Trying the longer names first means a model that really is listed under a suffixed name
+ * (say a cheaper `-fast` model) keeps its own price. The stored model id is never changed.
+ */
+export function cursorPriceIds(modelId: string): string[] {
+  let id = modelId.trim().toLowerCase();
+  if (CURSOR_UNPRICED.test(id)) return [];
+  id = id.replace(/^cursor-/, '');
+  const claude = /^claude-(\d+)(?:\.(\d+))?-(opus|sonnet|haiku|fable)(-.*)?$/.exec(id);
+  if (claude) id = `claude-${claude[3]}-${claude[1]}${claude[2] ? `-${claude[2]}` : ''}${claude[4] ?? ''}`;
+  if (id.startsWith('claude-')) id = id.replace(/(\d)\.(\d)/g, '$1-$2');
+  const ids = [modelId, id];
+  while (CURSOR_VARIANT.test(id)) ids.push((id = id.replace(CURSOR_VARIANT, '')));
+  return [...new Set(ids)];
+}
+
 /** Exact model id first, then with/without a provider prefix. No fuzzy matching: unknown stays unknown. */
 export function findPrice(table: PriceTable, modelId: string): ModelPrice | null {
   const bare = modelId.includes('/') ? modelId.slice(modelId.indexOf('/') + 1) : modelId;
@@ -43,6 +67,8 @@ export function findPrice(table: PriceTable, modelId: string): ModelPrice | null
 }
 
 export interface CostInput {
+  /** Only Cursor rows get their model name translated for the lookup; every other source is matched as stored. */
+  provider?: string;
   model_id: string;
   input_tokens: number | null;
   output_tokens: number | null;
@@ -52,7 +78,9 @@ export interface CostInput {
 
 /** USD at list API prices, or null when the model has no known price or no token counts. */
 export function estimateCost(table: PriceTable, r: CostInput): number | null {
-  const p = findPrice(table, r.model_id);
+  const ids = r.provider === 'cursor' ? cursorPriceIds(r.model_id) : [r.model_id];
+  let p: ModelPrice | null = null;
+  for (const id of ids) if ((p = findPrice(table, id))) break;
   if (!p || (r.input_tokens === null && r.output_tokens === null)) return null;
   return (
     (r.input_tokens ?? 0) * p.input +
