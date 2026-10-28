@@ -70,20 +70,49 @@ export async function endSession(env: Env, req: Request) {
 }
 
 /** Finds or creates the account for a GitHub identity. New accounts get the GitHub login as username when it's free. */
-export async function upsertUser(env: Env, githubId: number, githubLogin: string): Promise<{ id: string; created: boolean }> {
+/** A username as typed (any case, surrounding spaces), if it's one we'd accept: valid characters and not reserved. */
+export function cleanUsername(raw: string | null | undefined): string | null {
+  const name = (raw ?? '').trim().toLowerCase();
+  return USERNAME_RE.test(name) && !RESERVED.has(name) ? name : null;
+}
+
+/**
+ * The username a new account starts with: the one they asked for if it's free, else their GitHub login if that's
+ * free, else none (they pick one on the welcome screen). One indexed query checks both candidates.
+ */
+export async function pickUsername(env: Env, wanted: string | null, githubLogin: string): Promise<string | null> {
+  const candidates = [...new Set([cleanUsername(wanted), cleanUsername(githubLogin)].filter((n): n is string => !!n))];
+  if (!candidates.length) return null;
+  const { results } = await env.DB.prepare(`SELECT lower(username) AS u FROM users WHERE username IN (${candidates.map(() => '?').join(', ')})`)
+    .bind(...candidates).all<{ u: string }>();
+  const taken = new Set(results.map((r) => r.u));
+  return candidates.find((n) => !taken.has(n)) ?? null;
+}
+
+/**
+ * Finds or creates the account for a GitHub identity. Existing accounts are never renamed; `wanted` only
+ * shapes the starting username of a new one (see pickUsername).
+ */
+export async function upsertUser(env: Env, githubId: number, githubLogin: string, wanted: string | null = null): Promise<{ id: string; created: boolean }> {
   const existing = await env.DB.prepare('SELECT id FROM users WHERE github_id = ?').bind(githubId).first<{ id: string }>();
   if (existing) {
     await env.DB.prepare('UPDATE users SET github_login = ? WHERE id = ?').bind(githubLogin, existing.id).run();
     return { id: existing.id, created: false };
   }
   const id = crypto.randomUUID();
-  const candidate = githubLogin.toLowerCase();
-  const free = USERNAME_RE.test(candidate) && !RESERVED.has(candidate) &&
-    !(await env.DB.prepare('SELECT 1 FROM users WHERE username = ?').bind(candidate).first());
-  await env.DB.batch([
-    env.DB.prepare('INSERT INTO users (id, github_id, github_login, username, created_at) VALUES (?, ?, ?, ?, ?)').bind(id, githubId, githubLogin, free ? candidate : null, now()),
+  const insert = (username: string | null) => env.DB.batch([
+    env.DB.prepare('INSERT INTO users (id, github_id, github_login, username, created_at) VALUES (?, ?, ?, ?, ?)').bind(id, githubId, githubLogin, username, now()),
     env.DB.prepare('INSERT INTO profiles (user_id, updated_at) VALUES (?, ?)').bind(id, now()),
   ]);
+  const username = await pickUsername(env, wanted, githubLogin);
+  try {
+    await insert(username);
+  } catch (e) {
+    // Someone took the same name between the check and the insert (usernames are UNIQUE): start without one.
+    // Any other failure (say the same GitHub user signing up twice at once) is a real error.
+    if (!username || !/UNIQUE.*users\.username/.test(String(e))) throw e;
+    await insert(null);
+  }
   return { id, created: true };
 }
 
@@ -177,11 +206,12 @@ async function hmac(secret: string, data: string): Promise<string> {
   return b64url(new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data))));
 }
 
-export interface PendingSignup { id: number; login: string; exp: number }
+export interface PendingSignup { id: number; login: string; exp: number; wanted?: string }
 
 /** `payload.signature`, signed with a server secret so the GitHub identity can't be forged or edited. */
-export async function signPending(secret: string, p: { id: number; login: string }, now = Date.now()): Promise<string> {
-  const payload = b64url(new TextEncoder().encode(JSON.stringify({ id: p.id, login: p.login, exp: now + PENDING_TTL_S * 1000 })));
+export async function signPending(secret: string, p: { id: number; login: string; wanted?: string | null }, now = Date.now()): Promise<string> {
+  const body = { id: p.id, login: p.login, exp: now + PENDING_TTL_S * 1000, ...(p.wanted ? { wanted: p.wanted } : {}) };
+  const payload = b64url(new TextEncoder().encode(JSON.stringify(body)));
   return `${payload}.${await hmac(secret, payload)}`;
 }
 
@@ -196,7 +226,8 @@ export async function verifyPending(secret: string, token: string | null, now = 
   if (diff !== 0) return null;
   try {
     const p = JSON.parse(new TextDecoder().decode(fromB64url(payload))) as PendingSignup;
-    return typeof p.id === 'number' && typeof p.login === 'string' && p.exp > now ? p : null;
+    if (typeof p.id !== 'number' || typeof p.login !== 'string' || !(p.exp > now)) return null;
+    return { id: p.id, login: p.login, exp: p.exp, ...(cleanUsername(p.wanted) ? { wanted: p.wanted } : {}) };
   } catch {
     return null;
   }
@@ -205,6 +236,13 @@ export async function verifyPending(secret: string, token: string | null, now = 
 export const pendingCookie = (req: Request, token: string) => `${PENDING_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${PENDING_TTL_S}${secure(req)}`;
 export const clearPendingCookie = (req: Request) => `${PENDING_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure(req)}`;
 export const readPending = (env: Env, req: Request) => verifyPending(env.GITHUB_CLIENT_SECRET ?? '', getCookie(req, PENDING_COOKIE));
+
+// The username typed on the landing page, carried across the GitHub round trip. Only ever a cleaned username, so
+// it needs no signing: it's a preference, and pickUsername re-checks it when the account is created.
+const WANTED_COOKIE = 'tb_wanted_username';
+export const wantedCookie = (req: Request, name: string) => `${WANTED_COOKIE}=${name}; Path=/; HttpOnly; SameSite=Lax; Max-Age=900${secure(req)}`;
+export const clearWantedCookie = (req: Request) => `${WANTED_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure(req)}`;
+export const readWanted = (req: Request) => cleanUsername(getCookie(req, WANTED_COOKIE));
 
 export async function findUserByGithub(env: Env, githubId: number) {
   return env.DB.prepare('SELECT id FROM users WHERE github_id = ?').bind(githubId).first<{ id: string }>();

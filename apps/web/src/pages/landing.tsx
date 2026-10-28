@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  ArrowDown, ArrowRight, AtSign, BarChart3, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight, Coins, Flame, Globe, Laptop, Layers, Lock, RefreshCw, Terminal,
+  ArrowDown, ArrowRight, AtSign, BarChart3, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight, Coins, Flame, Globe, Laptop, Layers, Loader2, Lock, RefreshCw, Terminal, X,
 } from 'lucide-react';
 import { GitHubMark, LogoMark, ToolMark, TOOL_MARKS } from '@/components/brand';
 import { CopyCommand } from '@/components/copy-command';
@@ -20,6 +20,7 @@ import { colorMap, daysFrom, rowTokens, type Metric, type Row } from '@/lib/seri
 import { cn } from '@/lib/utils';
 import { AreaChart, perDay } from '@/components/profile-widgets';
 import { useSession } from '@/session';
+import { checkUsernameNow, useUsernameCheck, type UsernameCheck } from '@/lib/username-check';
 import { KpiCard, streakRuns } from './overview';
 import { ProfileHeader, ProfileView } from './profile';
 
@@ -637,33 +638,87 @@ function HandleClaim({ id = 'handle', handle, onChange }: { id?: string; handle:
       </div>
     );
   }
+  return <ClaimForm id={id} handle={handle} onChange={onChange} />;
+}
+
+/**
+ * The signed-out claim field. Availability is checked as you type (debounced and cached, see username-check.ts).
+ * Claim checks right away if the answer isn't in yet, then goes to sign-in only when the name is free (or when the
+ * check can't answer, since sign-up re-checks anyway); a new account starts with the claimed name.
+ */
+function ClaimForm({ id, handle, onChange }: { id: string; handle: string; onChange: (h: string) => void }) {
+  const live = useUsernameCheck(handle);
+  // The answer to the last Claim click, shown until the name changes.
+  const [submitted, setSubmitted] = useState<{ name: string; check: UsernameCheck } | null>(null);
+  const [claiming, setClaiming] = useState(false);
+  // Coming back from GitHub with Back restores this page as it was left, mid-claim; let the button work again.
+  useEffect(() => {
+    const reset = (e: PageTransitionEvent) => e.persisted && setClaiming(false);
+    window.addEventListener('pageshow', reset);
+    return () => window.removeEventListener('pageshow', reset);
+  }, []);
+  const check = submitted?.name === handle ? submitted.check : live;
+  const claim = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (claiming) return;
+    if (!handle) return window.location.assign('/login'); // nothing typed: plain sign-in
+    setClaiming(true);
+    const r = live.state === 'ok' ? live : await checkUsernameNow(handle);
+    if (r.state === 'bad') {
+      setSubmitted({ name: handle, check: r });
+      setClaiming(false);
+      return;
+    }
+    window.location.assign(`/login?handle=${encodeURIComponent(handle)}`);
+  };
   const host = window.location.host;
+  const hint =
+    check.state === 'ok' ? <><Check className="size-3.5 text-[var(--series-3)]" />@{handle} is available</>
+      : check.state === 'bad' ? <><X className="size-3.5 text-destructive" />{check.reason ?? 'Not available'}</>
+        : null;
   return (
     <div className="grid w-full max-w-xl grid-cols-1 gap-4">
-      <form
-        action="/login"
-        className="flex overflow-hidden rounded-xl border bg-card shadow-xs transition-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/40"
-      >
-        <label htmlFor={id} className="flex min-w-0 flex-1 items-stretch">
-          <span className="flex shrink-0 items-center border-r bg-surface-2 px-3 font-mono text-sm text-muted-foreground">
-            <span className="hidden sm:inline font-medium">{host}/</span>@
-          </span>
-          <input
-            id={id}
-            name="handle"
-            value={handle}
-            onChange={(e) => onChange(cleanHandle(e.target.value))}
-            placeholder="yourname"
-            autoComplete="off"
-            spellCheck={false}
-            maxLength={30}
-            className="min-w-0 flex-1 bg-transparent px-3 py-2.5 font-mono text-sm text-foreground outline-none placeholder:text-subtle"
-          />
-        </label>
-        <div className="flex items-center p-1.5">
-          <Button type="submit" size="sm" className="h-8 px-3 font-semibold">Claim <ArrowRight /></Button>
-        </div>
-      </form>
+      <div className="grid gap-2">
+        <form
+          action="/login"
+          onSubmit={claim}
+          className={cn(
+            'flex overflow-hidden rounded-xl border bg-card shadow-xs transition-colors focus-within:ring-1',
+            check.state === 'bad' ? 'border-destructive/60 focus-within:ring-destructive/30' : 'focus-within:border-ring focus-within:ring-ring/40',
+          )}
+        >
+          <label htmlFor={id} className="flex min-w-0 flex-1 items-stretch">
+            <span className="flex shrink-0 items-center border-r bg-surface-2 px-3 font-mono text-sm text-muted-foreground">
+              <span className="hidden sm:inline font-medium">{host}/</span>@
+            </span>
+            <input
+              id={id}
+              name="handle"
+              value={handle}
+              onChange={(e) => onChange(cleanHandle(e.target.value))}
+              placeholder="yourname"
+              autoComplete="off"
+              spellCheck={false}
+              maxLength={30}
+              aria-invalid={check.state === 'bad'}
+              aria-describedby={hint ? `${id}-hint` : undefined}
+              className="min-w-0 flex-1 bg-transparent px-3 py-2.5 font-mono text-sm text-foreground outline-none placeholder:text-subtle"
+            />
+            <span className="flex w-6 items-center justify-center text-subtle" aria-hidden>
+              {check.state === 'checking' && !claiming && <Loader2 className="size-3.5 animate-spin" />}
+              {check.state === 'ok' && <Check className="size-3.5 text-[var(--series-3)]" />}
+            </span>
+          </label>
+          <div className="flex items-center p-1.5">
+            <Button type="submit" size="sm" className="h-8 px-3 font-semibold" disabled={check.state === 'bad' || claiming}>
+              {claiming ? <><Loader2 className="animate-spin" />Checking</> : <>Claim <ArrowRight /></>}
+            </Button>
+          </div>
+        </form>
+        <p id={`${id}-hint`} aria-live="polite" className={cn('flex min-h-4 items-center gap-1.5 px-1 text-left text-xs', check.state === 'bad' ? 'text-destructive' : 'text-muted-foreground')}>
+          {hint}
+        </p>
+      </div>
       <OrDivider />
       <CopyCommand command={INSTALL} className="w-full py-2 text-left" />
     </div>

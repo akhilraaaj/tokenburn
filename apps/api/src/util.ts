@@ -13,14 +13,15 @@ export interface Env {
   INGEST_LIMITER?: RateLimit;
 }
 
-const LIMITS = { login: { limit: 10, windowS: 60 }, ingest: { limit: 60, windowS: 60 } } as const;
+// lookup: the public username check; the landing page debounces and caches, so 30/min is far above real typing.
+const LIMITS = { login: { limit: 10, windowS: 60 }, ingest: { limit: 60, windowS: 60 }, lookup: { limit: 30, windowS: 60 } } as const;
 
 /**
  * Fixed-window rate limit. Uses the Workers binding when present; otherwise a single atomic D1 upsert
  * (one row write per call), since Cloudflare Pages has no rate-limiting binding. Throws 429 when exceeded.
  */
 export async function rateLimit(env: Env, kind: keyof typeof LIMITS, key: string) {
-  const binding = kind === 'login' ? env.LOGIN_LIMITER : env.INGEST_LIMITER;
+  const binding = kind === 'login' ? env.LOGIN_LIMITER : kind === 'ingest' ? env.INGEST_LIMITER : undefined;
   if (binding) {
     const { success } = await binding.limit({ key });
     if (!success) throw new HttpError(429, 'Too many requests. Try again in a minute.');

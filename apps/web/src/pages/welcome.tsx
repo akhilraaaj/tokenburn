@@ -16,12 +16,15 @@ import { useSession } from '@/session';
 export function Welcome() {
   const { refresh } = useSession();
   const navigate = useNavigate();
-  const [login, setLogin] = useState<string | null | undefined>(undefined);
+  // The pending GitHub identity, plus the username the account will start with (the one they claimed on the
+  // landing page if it's still free, else their GitHub login, else none).
+  const [pending, setPending] = useState<{ github_login: string; wanted: string | null; username: string | null } | null | undefined>(undefined);
+  const login = pending === undefined ? undefined : pending?.github_login ?? null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api<{ github_login: string }>('GET', '/api/web/pending').then((r) => setLogin(r.github_login)).catch(() => setLogin(null));
+    api<{ github_login: string; wanted: string | null; username: string | null }>('GET', '/api/web/pending').then(setPending).catch(() => setPending(null));
   }, []);
 
   if (login === null) return <Navigate to="/" replace />;
@@ -65,6 +68,7 @@ export function Welcome() {
           </div>
         </CardHeader>
         <CardContent className="grid gap-4 text-sm">
+          {pending && <StartingUsername {...pending} />}
           <ul className="grid gap-2.5 rounded-xl border bg-muted/30 p-4 text-muted-foreground font-medium">
             {[
               'Only daily token counts are stored, never prompts or code',
@@ -81,6 +85,20 @@ export function Welcome() {
           <Button variant="ghost" className="w-full text-muted-foreground" onClick={cancel} disabled={busy}>Cancel</Button>
         </CardFooter>
       </Card>
+    </div>
+  );
+}
+
+/** Which public username the new account starts with, and why, before anything is created. */
+function StartingUsername({ wanted, username }: { wanted: string | null; username: string | null }) {
+  const host = window.location.host;
+  return (
+    <div className="grid gap-1 rounded-xl border px-4 py-3">
+      <span className="text-xs text-subtle font-medium">Your profile address</span>
+      <span className="truncate font-mono text-foreground">{username ? `${host}/@${username}` : "You'll choose it next"}</span>
+      {wanted && username !== wanted && (
+        <span className="text-xs text-muted-foreground font-medium">@{wanted} was taken just now{username ? ', so you start with your GitHub name' : ''}. You can change it anytime.</span>
+      )}
     </div>
   );
 }

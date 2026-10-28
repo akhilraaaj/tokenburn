@@ -184,7 +184,7 @@ function ProfileBody({ handle }: { handle: string }) {
     return own ? (
       <div className="mx-auto grid max-w-md justify-items-center gap-3 px-4 py-24 text-center">
         <h1 className="text-2xl font-semibold">Your profile is private</h1>
-        <p className="text-muted-foreground">Turn it on in Settings, and choose what it shows.</p>
+        <p className="text-muted-foreground font-medium">Turn it on in Settings, and choose what it shows</p>
         <Button asChild variant="outline"><Link to="/dashboard/settings">Open settings</Link></Button>
       </div>
     ) : <NotFound message="This profile doesn't exist or is private." />;
@@ -298,7 +298,7 @@ export function ProfileView({ profile, preview = false }: { profile: PublicProfi
 
       {empty && (
         <div className="grid justify-items-center gap-3 py-12 text-center">
-          <p className="text-muted-foreground">This profile is public but doesn't share any usage details yet.</p>
+          <p className="text-muted-foreground font-medium">This profile is public but doesn't share any usage details yet</p>
           {!preview && user?.username === profile.username && (
             <Button asChild variant="outline" size="sm"><Link to="/dashboard/settings">Choose what to show</Link></Button>
           )}

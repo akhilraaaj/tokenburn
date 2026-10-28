@@ -2,7 +2,7 @@ import {
   BILLING_MODES, MEASUREMENT_TYPES, PROVIDERS, SOURCE_SCOPE, USAGE_SOURCES, isNonNegInt, isNonNegNumber, validateRecord,
 } from '../../../packages/shared/src/schema.ts';
 import {
-  RESERVED, USERNAME_RE, checkOrigin, clearPendingCookie, clearStateCookie, createDevice, deleteDeviceAndData, devIdentity,
+  RESERVED, USERNAME_RE, checkOrigin, cleanUsername, clearPendingCookie, clearWantedCookie, pickUsername, readWanted, wantedCookie, clearStateCookie, createDevice, deleteDeviceAndData, devIdentity,
   findUserByGithub, pendingCookie, readPending, signPending, endSession, githubAuthorizeRedirect, githubCallback, githubForm,
   githubUser, requireDevice, sessionUser, startSession, upsertUser, type User,
 } from './auth.ts';
@@ -554,6 +554,29 @@ const webSetUsername: Route = async (req, env) => {
 };
 
 /** Live availability check for the onboarding/settings username field. */
+const usernameCacheKey = (name: string) => new Request(`https://public-cache.internal/username-available/${name}`);
+
+/**
+ * Public "is this username free?" for the landing page's claim field. Cheap by design: the format is checked
+ * without the database, answers are cached at the edge for 30s per name, and only cache misses pay the per-IP
+ * rate limit and one indexed lookup. A briefly stale "available" is harmless: sign-up re-checks and falls back
+ * to the GitHub login.
+ */
+const publicUsernameAvailable: Route = async (req, env, _p, ctx) => {
+  const raw = (new URL(req.url).searchParams.get('name') ?? '').trim().toLowerCase();
+  if (!USERNAME_RE.test(raw)) return json({ available: false, reason: '3–30 characters: a–z, 0–9, _ or -, starting with a letter or digit' });
+  if (RESERVED.has(raw)) return json({ available: false, reason: 'That name is reserved' });
+  const key = usernameCacheKey(raw);
+  const hit = await caches.default.match(key).catch(() => undefined);
+  if (hit) return hit;
+  await rateLimit(env, 'lookup', clientIp(req));
+  const taken = await env.DB.prepare('SELECT 1 FROM users WHERE username = ?').bind(raw).first();
+  const res = json(taken ? { available: false, reason: 'Already taken' } : { available: true }, 200, { 'cache-control': 'public, max-age=30' });
+  const put = caches.default.put(key, res.clone()).catch(() => {});
+  if (ctx) ctx.waitUntil(put); else await put;
+  return res;
+};
+
 const webUsernameAvailable: Route = async (req, env) => {
   const u = await requireWebUser(req, env);
   const name = (new URL(req.url).searchParams.get('name') ?? '').trim().toLowerCase();
@@ -594,14 +617,20 @@ const webLogout: Route = async (req, env) => {
 const loginPage: Route = async (req, env) => {
   await rateLimit(env, 'login', `web:${clientIp(req)}`);
   if (await sessionUser(req, env)) return redirect('/dashboard');
-  const dev = new URL(req.url).searchParams.get('dev');
+  const params = new URL(req.url).searchParams;
+  // The username typed on the landing page ("Claim"), if it's a valid one; only ever applied to a new account.
+  const wanted = cleanUsername(params.get('handle'));
+  const dev = params.get('dev');
   if (dev) {
     const id = await devIdentity(env, req, dev);
-    const u = await upsertUser(env, id.githubId, id.githubLogin);
+    const u = await upsertUser(env, id.githubId, id.githubLogin, wanted);
     return redirect('/dashboard', [await startSession(env, req, u.id)]);
   }
   if (!env.GITHUB_CLIENT_ID || !env.GITHUB_CLIENT_SECRET) return signinError('not_configured');
-  return githubAuthorizeRedirect(env, req);
+  const res = githubAuthorizeRedirect(env, req);
+  // Remember the choice across the GitHub round trip; a plain "Sign in" clears an older one.
+  res.headers.append('set-cookie', wanted ? wantedCookie(req, wanted) : clearWantedCookie(req));
+  return res;
 };
 
 const authCallback: Route = async (req, env) => {
@@ -614,18 +643,21 @@ const authCallback: Route = async (req, env) => {
   }
   const existing = await findUserByGithub(env, gh.id);
   if (existing) {
-    await upsertUser(env, gh.id, gh.login); // refreshes the stored GitHub login
-    return redirect('/dashboard', [await startSession(env, req, existing.id), clearStateCookie(req)]);
+    await upsertUser(env, gh.id, gh.login); // refreshes the stored GitHub login; an existing username is never changed
+    return redirect('/dashboard', [await startSession(env, req, existing.id), clearStateCookie(req), clearWantedCookie(req)]);
   }
-  // No account for this GitHub user: ask before creating one (see auth.ts, "Pending sign-up").
-  return redirect('/welcome', [pendingCookie(req, await signPending(env.GITHUB_CLIENT_SECRET!, gh)), clearStateCookie(req)]);
+  // No account for this GitHub user: ask before creating one (see auth.ts, "Pending sign-up"). The username they
+  // typed rides along in the signed token, so /welcome can show it and sign-up can use it.
+  const pending = await signPending(env.GITHUB_CLIENT_SECRET!, { ...gh, wanted: readWanted(req) });
+  return redirect('/welcome', [pendingCookie(req, pending), clearStateCookie(req), clearWantedCookie(req)]);
 };
 
 /** The GitHub identity waiting for confirmation, if any (for the /welcome page). */
 const webPending: Route = async (req, env) => {
   const p = await readPending(env, req);
   if (!p) throw new HttpError(404, 'No pending sign-up');
-  return json({ github_login: p.login });
+  // The username the account will start with, so /welcome can say so (and whether the wanted one was taken).
+  return json({ github_login: p.login, wanted: p.wanted ?? null, username: await pickUsername(env, p.wanted ?? null, p.login) });
 };
 
 /** Creates the account for the pending GitHub identity and signs in. */
@@ -633,7 +665,7 @@ const webSignup: Route = async (req, env) => {
   checkOrigin(req);
   const p = await readPending(env, req);
   if (!p) throw new HttpError(400, 'This sign-up expired. Sign in with GitHub again.');
-  const u = await upsertUser(env, p.id, p.login); // also safe if the account was created meanwhile
+  const u = await upsertUser(env, p.id, p.login, p.wanted ?? null); // also safe if the account was created meanwhile
   const h = new Headers({ 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...SECURITY_HEADERS });
   h.append('set-cookie', await startSession(env, req, u.id));
   h.append('set-cookie', clearPendingCookie(req));
@@ -707,6 +739,7 @@ const routes: [string, RegExp, Route][] = [
   ['GET', /^\/api\/web\/settings$/, webSettings],
   ['PUT', /^\/api\/web\/username$/, webSetUsername],
   ['GET', /^\/api\/web\/username-available$/, webUsernameAvailable],
+  ['GET', /^\/api\/username-available$/, publicUsernameAvailable],
   ['PATCH', /^\/api\/web\/profile$/, webUpdateProfile],
   ['DELETE', /^\/api\/web\/devices\/(?<id>[\w-]+)$/, webDeleteDevice],
   ['DELETE', /^\/api\/web\/data$/, webDeleteData],

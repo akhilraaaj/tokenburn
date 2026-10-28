@@ -186,8 +186,8 @@ export function AppLayout() {
                       <ChevronsUpDown className="ml-auto size-4 text-subtle" />
                     </SidebarMenuButton>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent side="top" align="start" className="min-w-56">
-                    <DropdownMenuLabel className="font-normal text-muted-foreground">Signed in as {user.github_login}</DropdownMenuLabel>
+                  <DropdownMenuContent side="top" align="start" className="min-w-56 font-medium">
+                    <DropdownMenuLabel className="font-medium text-muted-foreground">Signed in as {user.github_login}</DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     {user.username && <DropdownMenuItem asChild><Link to={`/@${user.username}`}><Globe />Public profile</Link></DropdownMenuItem>}
                     <DropdownMenuItem asChild><Link to="/dashboard/settings"><Settings />Settings</Link></DropdownMenuItem>
