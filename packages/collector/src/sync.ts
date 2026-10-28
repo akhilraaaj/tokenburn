@@ -5,7 +5,7 @@ import { aggregateDaily, bucketKey, estimateCost, uploadModelId, SOURCES, USAGE_
 import type { Config } from './config.ts';
 import type { Store } from './store.ts';
 
-export const COLLECTOR_VERSION = '0.3.1';
+export const COLLECTOR_VERSION = '0.3.2';
 const sha = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
 
 export interface SessionUpload {
