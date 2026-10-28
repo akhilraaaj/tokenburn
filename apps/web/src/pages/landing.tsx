@@ -257,7 +257,7 @@ export function Landing() {
         {/* Hero + product preview, kept close so the dashboard shows on the first screen */}
         <div className="grid grid-cols-1 gap-10 sm:gap-12">
           <section className="grid grid-cols-1 justify-items-center gap-6 text-center animate-in fade-in slide-in-from-bottom-3 duration-700">
-            <span className="inline-flex items-center gap-2.5 rounded-full border bg-card py-1 pr-3.5 pl-1 text-xs text-muted-foreground shadow-xs">
+            <span className="inline-flex items-center gap-2.5 rounded-full border bg-card py-1 pr-3.5 pl-1 text-xs text-muted-foreground shadow-xs font-medium">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-[color-mix(in_oklab,var(--series-2)_12%,transparent)] px-2 py-0.5 font-medium text-[var(--series-2)]">
                 <span className="relative flex size-1.5">
                   <span className="absolute inline-flex size-full animate-ping rounded-full bg-[var(--series-2)] opacity-60" />
@@ -267,10 +267,10 @@ export function Landing() {
               </span>
               Private by default
             </span>
-            <h1 className="max-w-3xl text-[2.1rem] leading-[1.12] font-semibold tracking-tight text-balance sm:text-5xl sm:leading-[1.1] lg:text-[3.5rem]">
+            <h1 className="max-w-3xl text-3xl leading-[1.35] font-semibold tracking-normal text-balance sm:text-5xl sm:leading-[1.2] sm:tracking-tight lg:text-[3.5rem]">
               <ToolHeadline />
             </h1>
-            <p className="max-w-xl text-[0.95rem] leading-relaxed text-pretty text-muted-foreground sm:text-base">
+            <p className="max-w-xl text-sm sm:text-base leading-relaxed font-medium text-pretty text-muted-foreground">
               See how you really build with AI. Every model, token and streak across your tools, on one dashboard and
               one <span className="font-medium text-foreground">@profile</span> worth sharing.
             </p>
@@ -300,11 +300,12 @@ export function Landing() {
           <SectionHeading
             label="Your profile"
             icon={AtSign}
-            title="One link that shows how you build with AI"
-            sub="Your GitHub has your commits. Your tokenburn profile has the rest: the models you lean on, how much you ship with them, and how long the streak has lasted. Flip a switch and watch it change."
+            title="Show the work behind the commits"
+            sub="A shareable page for the models you run, the tokens you burn, and the streaks you keep. Flip a switch, preview live, then publish."
           />
-          <div className="grid items-start gap-6 lg:grid-cols-[18rem_minmax(0,1fr)] lg:gap-8">
-            <div className="grid gap-6">
+          <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[18rem_minmax(0,1fr)] lg:gap-8">
+            {/* On desktop the switches stay pinned below the site header while the full-height preview scrolls by. */}
+            <div className="grid gap-6 lg:sticky lg:top-20">
               <ProfileControls shows={shows} onChange={(k, v) => setShows({ ...shows, [k]: v })} />
               <div className="hidden lg:grid"><ProfileCta /></div>
             </div>
@@ -322,7 +323,7 @@ export function Landing() {
             sub="One place for every AI coding tool, built for developers who live in the terminal."
           />
           <div className="grid gap-5 md:grid-cols-6 lg:gap-6">
-            <Tile className="md:col-span-4" icon={BarChart3} title="Activity at a glance" body="Tokens, requests and cost per day, by model, with your best day called out.">
+            <Tile className="md:col-span-4" icon={BarChart3} label="Activity" accent="var(--series-2)" title="Watch the tokens fly" body="Tokens, requests and cost stacked by day and by model, so you see what actually moved. Your biggest day gets its own spotlight.">
               <div className="grid gap-3">
                 <div className="flex gap-1 text-[0.7rem]">
                   {['Tokens', 'Requests', 'Cost'].map((l, i) => (
@@ -332,13 +333,13 @@ export function Landing() {
                 <AreaChart height={92} points={FEATURE_TREND} color="var(--series-2)" format={(v) => `${compact(v)} tokens`} xLabels={['30 days ago', 'Today']} />
               </div>
             </Tile>
-            <Tile className="md:col-span-2" icon={Flame} title="Streaks that count" body="Any tool on any day keeps it alive. Current, longest and every run in between.">
+            <Tile className="md:col-span-2" icon={Flame} label="Streaks" accent="var(--series-4)" title="Don't break the chain" body="Any tool, any day keeps it alive. Then go chase your longest run.">
               <AreaChart height={92} points={FEATURE_STREAK} color="var(--series-4)" format={(v) => (v ? `Day ${v} of a streak` : 'No usage')} xLabels={['30 days ago', 'Today']} />
             </Tile>
-            <Tile className="md:col-span-3" icon={CalendarDays} title="A year of contributions" body="A GitHub-style grid across every tool, sized to fit any screen.">
+            <Tile className="md:col-span-3" icon={CalendarDays} label="Heatmap" accent="var(--tb-brand)" title="Your year, square by square" body="A GitHub-style heatmap of every day you built with AI, across every tool you use, all year long.">
               <MiniContributions />
             </Tile>
-            <Tile className="md:col-span-3" icon={Layers} title="Every model, side by side" body="Rank by tokens, requests or cost, and open any model for its own trend.">
+            <Tile className="md:col-span-3" icon={Layers} label="Models" accent="var(--series-7)" title="Know your heavy lifters" body="See which models actually do the work. Rank by tokens, requests or cost, then dive into any one.">
               <div className="grid gap-3.5">
                 {MIX.slice(0, 3).map((m) => (
                   <div key={m.name} className="grid gap-1">
@@ -353,15 +354,21 @@ export function Landing() {
                 ))}
               </div>
             </Tile>
-            <Tile className="md:col-span-2" icon={Terminal} title="Collected on your machine" body="A small CLI reads each tool's own usage records. Your code and prompts never leave." />
-            <Tile className="md:col-span-2" icon={RefreshCw} title="Syncs on its own" body="Your OS runs a quick sync every 30 minutes. Nothing stays running in between." />
-            <Tile className="md:col-span-2" icon={Coins} title="Honest cost estimates" body="Billed amounts where providers report them, otherwise API list prices, always labeled." />
+            <Tile className="md:col-span-2" icon={Terminal} label="Local-first" accent="var(--series-3)" title="Your code stays home" body="A tiny CLI reads usage logs right on your machine. Prompts and code never leave it.">
+              <MiniCollect />
+            </Tile>
+            <Tile className="md:col-span-2" icon={RefreshCw} label="Auto sync" accent="var(--series-1)" title="Set it and forget it" body="A quick sync every 30 minutes, run by your OS. Nothing humming in the background.">
+              <MiniSyncs />
+            </Tile>
+            <Tile className="md:col-span-2" icon={Coins} label="Costs" accent="var(--series-5)" title="No mystery math" body="Billed where providers report it, list price where they don't. Always labeled.">
+              <MiniCosts />
+            </Tile>
           </div>
         </section>
 
         {/* How it works */}
         <section id="how" className="grid scroll-mt-24 grid-cols-1 gap-10 sm:gap-12">
-          <SectionHeading label="How it works" icon={Terminal} title="Up and running in a minute" sub="Three steps, then it takes care of itself. Pick a step to watch it run in the terminal." />
+          <SectionHeading label="How it works" icon={Terminal} title="Less setup than a coffee" sub="Install, set up, then code as usual. Pick a step to watch it run in the terminal." />
           <HowItWorks handle={shown} />
         </section>
 
@@ -379,7 +386,7 @@ export function Landing() {
             <PrivacyList icon={RefreshCw} title="Synced: only totals" items={SYNCED} />
             <PrivacyList icon={Globe} title="On your profile: your call" items={PROFILE_CONTROLS} />
           </div>
-          <p className="flex items-center justify-center gap-2 text-center text-xs text-muted-foreground">
+          <p className="flex items-center justify-center gap-2 text-center text-xs text-muted-foreground font-medium">
             <Lock className="size-3.5 flex-none text-subtle" />
             Setup shows the exact upload and asks before the first one.
           </p>
@@ -395,14 +402,14 @@ export function Landing() {
                   {f.q}
                   <ChevronDown className="size-4 flex-none text-subtle transition-transform group-open:rotate-180" />
                 </summary>
-                <p className="pt-3 pr-8 text-sm leading-relaxed text-pretty text-muted-foreground">{f.a}</p>
+                <p className="pt-3 pr-8 text-sm leading-relaxed font-medium text-pretty text-muted-foreground">{f.a}</p>
               </details>
             ))}
           </div>
         </section>
 
         {/* Final CTA: the hero's claim field and install command again, under the tools they bring together. */}
-        <section className="relative isolate grid justify-items-center gap-7 overflow-hidden rounded-3xl border bg-card px-6 py-14 text-center sm:py-16">
+        <section className="relative isolate grid justify-items-center gap-7 overflow-hidden rounded-3xl border bg-card px-4 py-14 text-center sm:px-6 sm:py-16">
           {/* Faint grid lines along the top edge, fading out before the copy. */}
           <svg aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-56 w-full text-border opacity-60 [mask-image:linear-gradient(to_bottom,black,transparent)]">
             <defs>
@@ -414,11 +421,11 @@ export function Landing() {
           </svg>
           <ToolStack />
           <div className="grid justify-items-center gap-3">
-            <h2 className="max-w-2xl text-2xl font-semibold tracking-tight text-balance sm:text-4xl">
+            <h2 className="max-w-2xl text-[1.625rem] leading-[1.3] font-semibold tracking-normal text-balance sm:text-4xl sm:leading-tight sm:tracking-tight">
               You've burned millions of tokens.
               <span className="block text-muted-foreground">Got anything to show for it?</span>
             </h2>
-            <p className="max-w-lg text-[0.95rem] text-pretty text-muted-foreground">
+            <p className="max-w-xl sm:text-base text-sm font-medium text-pretty text-muted-foreground my-1 leading-relaxed">
               Claim your handle and turn every session in Claude Code, Codex, Cursor and Gemini into streaks, stats and a
               profile worth sharing.
             </p>
@@ -468,7 +475,15 @@ function ToolHeadline() {
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
-  return <>Every token <HeadlineIcon active={shown[0]} /> you burn, <HeadlineIcon active={shown[1]} /> in one <HeadlineIcon active={shown[2]} /> place.</>;
+  // Each icon sticks to the word before it and "in one … place." stays whole, so narrow screens break lines after an
+  // icon, never before one or around a lone word.
+  return (
+    <>
+      Every <span className="whitespace-nowrap">token <HeadlineIcon active={shown[0]} /></span>{' '}
+      you <span className="whitespace-nowrap">burn, <HeadlineIcon active={shown[1]} /></span>{' '}
+      <span className="whitespace-nowrap">in one <HeadlineIcon active={shown[2]} /> place.</span>
+    </>
+  );
 }
 
 /**
@@ -484,7 +499,7 @@ const TILE_IN = 'transform 420ms cubic-bezier(0.25, 1, 0.5, 1) 280ms, opacity 42
  */
 function HeadlineIcon({ active }: { active: number }) {
   return (
-    <span aria-hidden className="relative inline-block size-[0.92em] translate-y-[-0.06em] align-middle [perspective:12em]">
+    <span aria-hidden className="relative inline-block size-[0.82em] translate-y-[-0.06em] align-middle [perspective:12em] sm:size-[0.92em]">
       {HEADLINE_TOOLS.map((tool, i) => (
         <span
           key={tool}
@@ -539,7 +554,7 @@ function HandleClaim({ id = 'handle', handle, onChange }: { id?: string; handle:
         {/* Same shape as the claim field below, with the signed-in actions in place of the input. */}
         <div className="flex overflow-hidden rounded-xl border bg-card shadow-xs">
           <span className="flex shrink-0 items-center border-r bg-surface-2 px-3 font-mono text-sm text-muted-foreground">
-            <span className="hidden sm:inline">{window.location.host}/</span>@
+            <span className="hidden sm:inline font-medium">{window.location.host}/</span>@
           </span>
           {user.username ? (
             <Link to={`/@${user.username}`} className="flex min-w-0 flex-1 items-center truncate px-3 py-2.5 text-left font-mono text-sm text-foreground hover:text-brand">
@@ -567,7 +582,7 @@ function HandleClaim({ id = 'handle', handle, onChange }: { id?: string; handle:
       >
         <label htmlFor={id} className="flex min-w-0 flex-1 items-stretch">
           <span className="flex shrink-0 items-center border-r bg-surface-2 px-3 font-mono text-sm text-muted-foreground">
-            <span className="hidden sm:inline">{host}/</span>@
+            <span className="hidden sm:inline font-medium">{host}/</span>@
           </span>
           <input
             id={id}
@@ -582,7 +597,7 @@ function HandleClaim({ id = 'handle', handle, onChange }: { id?: string; handle:
           />
         </label>
         <div className="flex items-center p-1.5">
-          <Button type="submit" size="sm" className="h-8 px-3">Claim <ArrowRight /></Button>
+          <Button type="submit" size="sm" className="h-8 px-3 font-semibold">Claim <ArrowRight /></Button>
         </div>
       </form>
       <OrDivider />
@@ -605,15 +620,34 @@ function OrDivider() {
 function ProfileControls({ shows, onChange }: { shows: Shows; onChange: (k: ShowKey, v: boolean) => void }) {
   return (
     <Card className="gap-3">
-      <CardHeader className="gap-1">
+      <CardHeader className="gap-1.5">
         <CardTitle className="text-sm">What your profile shows</CardTitle>
-        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
           <Lock className="size-3 text-subtle" />Same switches as Settings. Private until you publish.
         </p>
       </CardHeader>
-      <CardContent className="grid gap-x-6 sm:grid-cols-2 lg:grid-cols-1">
+      {/* Below lg the same switches are compact chips, so the card stays short above the preview. */}
+      <CardContent className="flex flex-wrap gap-2 lg:hidden">
         {SHOW_FIELDS.map(([k, label]) => (
-          <label key={k} htmlFor={k} className="flex cursor-pointer items-center justify-between gap-4 border-t py-2 text-sm">
+          <button
+            key={k}
+            type="button"
+            role="switch"
+            aria-checked={shows[k]}
+            onClick={() => onChange(k, !shows[k])}
+            className={cn(
+              'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-colors',
+              shows[k] ? 'border-brand/40 bg-brand/10 text-foreground' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <Check className={cn('size-3.5 transition-opacity', shows[k] ? 'text-brand' : 'opacity-0 -ml-5')} />
+            {label}
+          </button>
+        ))}
+      </CardContent>
+      <CardContent className="grid max-lg:hidden">
+        {SHOW_FIELDS.map(([k, label]) => (
+          <label key={k} htmlFor={k} className="flex cursor-pointer items-center justify-between gap-4 border-t py-2 text-sm font-medium">
             {label}
             <Switch id={k} size="sm" checked={shows[k]} onCheckedChange={(v) => onChange(k, v)} />
           </label>
@@ -634,25 +668,38 @@ function WindowDots() {
   );
 }
 
-/** The real profile page (top bar, ProfileView, footnote) inside a browser frame, fed example data. */
+/**
+ * The real profile page (top bar, ProfileView, footnote) inside a browser frame, fed example data. It shows at full
+ * height with no scroll of its own, so the page scroll never gets trapped inside it.
+ */
+/**
+ * The real profile page inside a browser frame, fed example data. It never scrolls on its own (that would trap the
+ * page scroll); below lg it opens capped, with a button to show the rest.
+ */
 function ProfilePreview({ profile }: { profile: PublicProfile }) {
+  const [expanded, setExpanded] = useState(false);
   return (
-    <div className="flex max-h-[860px] flex-col overflow-hidden rounded-xl border bg-background shadow-sm max-lg:max-h-[680px]">
+    <div className="relative flex flex-col overflow-clip rounded-xl border bg-background shadow-sm">
       <div className="flex flex-none items-center gap-3 border-b bg-card px-4 py-2.5">
         <WindowDots />
         <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md border bg-surface-2/60 px-2.5 py-1 font-mono text-xs text-muted-foreground">
           <Lock className="size-3 flex-none text-subtle" />
           <span className="truncate">{window.location.host}/<span className="text-foreground">@{profile.username}</span></span>
         </div>
-        <Badge variant="secondary" className="font-normal">Example data</Badge>
       </div>
-      {/* The page scrolls inside the frame, like a real browser window. */}
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div className={cn(!expanded && 'max-lg:max-h-[44rem]')}>
         <ProfileHeader />
         <div className="mx-auto grid w-full max-w-3xl grid-cols-1 gap-6 px-4 pt-2 pb-8 sm:px-6">
           <ProfileView profile={profile} preview />
         </div>
       </div>
+      {!expanded && (
+        <div className="absolute inset-x-0 bottom-0 flex h-36 items-end justify-center bg-linear-to-t from-background from-30% to-transparent pb-5 lg:hidden">
+          <Button size="sm" variant="outline" onClick={() => setExpanded(true)}>
+            Show full profile <ChevronDown />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -723,43 +770,60 @@ function HeroDashboard({ rows, since, colorOf, handle }: { rows: Row[]; since: s
  */
 function HowItWorks({ handle }: { handle: string }) {
   const [step, setStep] = useState(0);
-  const [progress, setProgress] = useState(0);
+  // The current step's run: how long it plays, when it started, and a key that restarts the rail fill on every run.
+  const [run, setRun] = useState({ ms: 0, start: 0, key: 0, step: -1 });
   return (
     <div className="grid items-stretch gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:gap-12">
-      <ol className="grid lg:grid-rows-3">
+      {/* Rail stepper: reached steps are solid with a soft halo, and the rail fills toward the next step as the
+          terminal plays the current one. */}
+      <ol className="grid content-center">
         {STEPS.map((st, i) => {
           const state = i < step ? 'done' : i === step ? 'active' : 'next';
-          const fill = state === 'done' ? 1 : state === 'active' ? progress : 0;
+          const last = i === STEPS.length - 1;
           return (
-            <li key={st.title} className="grid">
-              <button type="button" onClick={() => setStep(i)} aria-current={state === 'active' ? 'step' : undefined} className="group flex gap-5 text-left">
+            <li key={st.title}>
+              <button
+                type="button"
+                onClick={() => setStep(i)}
+                aria-current={state === 'active' ? 'step' : undefined}
+                className="group grid w-full grid-cols-[auto_minmax(0,1fr)] gap-x-5 text-left"
+              >
                 <span className="flex flex-col items-center">
                   <span
                     className={cn(
-                      'num flex size-9 flex-none items-center justify-center rounded-full border font-mono text-xs transition-all duration-300',
-                      state === 'done' && 'border-brand bg-brand text-primary-foreground',
-                      state === 'active' && 'border-brand bg-background text-brand ring-4 ring-brand/15',
-                      state === 'next' && 'bg-card text-subtle group-hover:border-foreground/30 group-hover:text-foreground',
+                      'num relative z-[1] flex size-9 flex-none items-center justify-center rounded-full text-sm font-medium transition-[background-color,border-color,color,box-shadow] duration-300 ease-out',
+                      state === 'next'
+                        ? 'border-2 bg-background text-subtle group-hover:border-foreground/30 group-hover:text-foreground'
+                        : 'bg-[var(--series-2)] text-white ring-[6px] ring-[color-mix(in_oklab,var(--series-2)_16%,transparent)] dark:ring-[color-mix(in_oklab,var(--series-2)_26%,transparent)]',
                     )}
                   >
-                    {state === 'done' ? <Check className="size-4" /> : `0${i + 1}`}
+                    {i + 1}
                   </span>
-                  {i < STEPS.length - 1 && (
-                    <span className="relative my-2 min-h-8 w-px flex-1 bg-border">
-                      <span className="absolute inset-x-0 top-0 bg-brand" style={{ height: `${fill * 100}%` }} />
+                  {!last && (
+                    <span className="relative w-0.5 flex-1 overflow-hidden bg-border">
+                      {/* The fill grows with a GPU transform over the step's whole run, ending as the next step lights. */}
+                      {state === 'done' && <span className="absolute inset-0 bg-[var(--series-2)]" />}
+                      {state === 'active' && run.step === i && run.ms > 0 && (
+                        <span
+                          key={run.key}
+                          className="rail-fill absolute inset-0 bg-[var(--series-2)]"
+                          // A negative delay pins the fill to the run's start, so a late render can't put it behind.
+                          style={{ animationDuration: `${run.ms}ms`, animationDelay: `${Math.min(0, run.start - performance.now())}ms` }}
+                        />
+                      )}
                     </span>
                   )}
                 </span>
-                <span className={cn('grid min-w-0 content-start gap-2 pt-1.5', i < STEPS.length - 1 && 'pb-8')}>
-                  <span className={cn('font-medium transition-colors', state !== 'active' && 'text-muted-foreground group-hover:text-foreground')}>{st.title}</span>
-                  <span className="text-sm text-muted-foreground">{st.body}</span>
+                <span className={cn('grid min-w-0 content-start gap-2 pt-1.5', !last && 'pb-10')}>
+                  <span className={cn('font-medium transition-colors duration-300', state === 'next' && 'text-muted-foreground group-hover:text-foreground')}>{st.title}</span>
+                  <span className="text-sm leading-relaxed font-medium text-muted-foreground">{st.body}</span>
                   <code
                     className={cn(
-                      'w-fit max-w-full truncate rounded-md border px-2 py-0.5 font-mono text-xs transition-colors',
-                      state === 'active' ? 'border-brand/30 bg-brand/10 text-brand' : 'border-transparent bg-surface-2 text-subtle',
+                      'flex w-fit max-w-full items-center gap-2 truncate rounded-lg px-2.5 py-1 font-mono font-medium text-xs transition-colors duration-300',
+                      state === 'active' ? 'bg-[var(--term-bg)] text-[var(--term-text)]' : 'bg-surface-2 text-subtle',
                     )}
                   >
-                    $ {st.command}
+                    <span className={cn('transition-colors duration-300', state === 'active' && 'text-[var(--term-green)]')}>➜</span>{st.command}
                   </code>
                 </span>
               </button>
@@ -767,7 +831,12 @@ function HowItWorks({ handle }: { handle: string }) {
           );
         })}
       </ol>
-      <TerminalDemo handle={handle} step={step} onProgress={setProgress} onAdvance={() => setStep((n) => (n + 1) % STEPS.length)} />
+      <TerminalDemo
+        handle={handle}
+        step={step}
+        onPlay={(ms, start) => setRun((r) => ({ ms, start, key: r.key + 1, step }))}
+        onAdvance={() => setStep((n) => (n + 1) % STEPS.length)}
+      />
     </div>
   );
 }
@@ -876,14 +945,37 @@ const prefersReducedMotion = () => typeof window !== 'undefined' && window.match
  * The real CLI output for each step, typed out once the terminal scrolls into view: commands character by
  * character, output line by line. Reduced-motion users get the finished screen.
  */
-function TerminalDemo({ handle, step, onProgress, onAdvance }: {
+/** Typing speed (ms per tick) and how long a finished step stays on screen before the next one starts. */
+const TICK_MS = 28;
+const HOLD_MS = 1800;
+/** How long the old step's output takes to fade out before the next step starts typing. */
+const SWAP_MS = 240;
+
+function TerminalDemo({ handle, step, onPlay, onAdvance }: {
   handle: string;
   step: number;
-  onProgress: (fraction: number) => void;
+  /** Called when a step starts playing: how long it lasts (typing plus hold; 0 when it won't auto-advance) and when. */
+  onPlay: (ms: number, start: number) => void;
   onAdvance: () => void;
 }) {
   const lines = useMemo(() => terminalScripts(handle, window.location.host), [handle]);
-  const script = lines[step];
+  // The step on screen trails the selected one by a short fade: the old output eases out, then the new one types.
+  const [shown, setShown] = useState(step);
+  const [leaving, setLeaving] = useState(false);
+  useEffect(() => {
+    if (step === shown) return;
+    if (prefersReducedMotion()) {
+      setShown(step);
+      return;
+    }
+    setLeaving(true);
+    const id = setTimeout(() => {
+      setShown(step);
+      setLeaving(false);
+    }, SWAP_MS);
+    return () => clearTimeout(id);
+  }, [step, shown]);
+  const script = lines[shown];
   // Timeline: a command costs one tick per character plus a pause; an output line costs a few ticks.
   const timeline = useMemo(() => {
     let t = 0;
@@ -897,6 +989,8 @@ function TerminalDemo({ handle, step, onProgress, onAdvance }: {
   const wrap = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
+  // Whether earlier lines have moved out of view at the top, which turns on the top-edge fade.
+  const [clipped, setClipped] = useState(false);
   const [tick, setTick] = useState(0);
   const [run, setRun] = useState(0);
 
@@ -908,33 +1002,43 @@ function TerminalDemo({ handle, step, onProgress, onAdvance }: {
     return () => io.disconnect();
   }, []);
 
-  useEffect(() => {
-    if (!visible) return;
-    if (prefersReducedMotion()) {
-      setTick(total);
-      return;
-    }
-    setTick(0);
-    const id = setInterval(() => setTick((t) => (t >= total ? t : t + 1)), 28);
-    return () => clearInterval(id);
-  }, [visible, step, total, run]);
-
-  // Follow the output as it grows, like a terminal does.
-  useEffect(() => {
-    const el = body.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [tick]);
-
-  const done = tick >= total;
-  useEffect(() => onProgress(total ? Math.min(1, tick / total) : 1), [tick, total, onProgress]);
-  // Once a step has played out, hold the finished screen for a moment, then move on to the next step.
+  // One clock drives the typing, the stepper's rail and the advance: ticks are read from elapsed time (not counted),
+  // so a throttled timer can't make the terminal drift from the rail.
+  const play = useRef(onPlay);
+  play.current = onPlay;
   const advance = useRef(onAdvance);
   advance.current = onAdvance;
   useEffect(() => {
-    if (!visible || !done || prefersReducedMotion()) return;
-    const id = setTimeout(() => advance.current(), 3200);
-    return () => clearTimeout(id);
-  }, [visible, done, step, run]);
+    if (!visible || leaving) return;
+    if (prefersReducedMotion()) {
+      setTick(total);
+      play.current(0, performance.now());
+      return;
+    }
+    const duration = total * TICK_MS + HOLD_MS;
+    const start = performance.now();
+    setTick(0);
+    play.current(duration, start);
+    const id = setInterval(() => setTick(Math.min(total, Math.floor((performance.now() - start) / TICK_MS))), TICK_MS);
+    const next = setTimeout(() => advance.current(), duration);
+    return () => {
+      clearInterval(id);
+      clearTimeout(next);
+    };
+  }, [visible, shown, leaving, total, run]);
+
+  // Follow the output as it grows, like a terminal does, gliding rather than jumping. The body clips instead of
+  // scrolling (no scrollbar, and the page scroll never gets caught here), but it can still be moved from code.
+  useEffect(() => {
+    const el = body.current;
+    if (!el) return;
+    setClipped(el.scrollHeight > el.clientHeight + 1);
+    if (el.scrollHeight - el.clientHeight - el.scrollTop > 1) {
+      el.scrollTo({ top: el.scrollHeight, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+    }
+  }, [tick, shown]);
+
+  const done = tick >= total;
 
   return (
     <div ref={wrap} className="overflow-hidden rounded-xl border border-[var(--term-line)] bg-[var(--term-bg)] text-[var(--term-text)] shadow-lg">
@@ -944,7 +1048,7 @@ function TerminalDemo({ handle, step, onProgress, onAdvance }: {
         <button
           type="button"
           onClick={() => setRun((r) => r + 1)}
-          className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-[var(--term-dim)] transition-colors hover:text-[var(--term-text)]"
+          className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-[var(--term-dim)] transition-colors hover:text-[var(--term-text)]"
           aria-label="Replay"
         >
           <RefreshCw className="size-3" />Replay
@@ -952,29 +1056,38 @@ function TerminalDemo({ handle, step, onProgress, onAdvance }: {
       </div>
       <div
         ref={body}
-        className="h-[26rem] overflow-y-auto overscroll-contain p-5 font-mono text-[0.78rem] leading-relaxed [scrollbar-width:thin]"
-        aria-label={`Terminal showing ${STEPS[step].command}`}
+        className={cn(
+          'h-80 overflow-hidden p-4 font-mono text-[0.78rem] leading-relaxed sm:h-[26rem] sm:p-5',
+          clipped && '[mask-image:linear-gradient(to_bottom,transparent,black_3rem)]',
+        )}
+        aria-label={`Terminal showing ${STEPS[shown].command}`}
       >
-        <div key={`${step}-${run}`} className="grid content-start gap-0.5">
-          {script.map((l, i) => {
-            if (tick < timeline[i]) return null;
-            if ('cmd' in l) {
-              const typed = l.cmd.slice(0, tick - timeline[i]);
-              const typing = typed.length < l.cmd.length;
-              return (
-                <span key={i} className={cn('whitespace-pre-wrap', i > 0 && 'mt-3')}>
-                  <span className="text-[var(--term-green)]">➜</span> <span className="text-[var(--term-cyan)]">~</span> {typed}
-                  {typing && <Caret />}
-                </span>
-              );
-            }
-            return <span key={i} className={cn('whitespace-pre-wrap', l.gap && 'mt-2.5')}>{l.out}</span>;
-          })}
-          {done && (
-            <span className="mt-3">
-              <span className="text-[var(--term-green)]">➜</span> <span className="text-[var(--term-cyan)]">~</span> <Caret />
-            </span>
-          )}
+        {/* Outer layer fades the old step out; the inner one, remounted per step, settles the new one in. */}
+        <div
+          className={cn('transition-[opacity,transform] ease-out', leaving && '-translate-y-1.5 opacity-0')}
+          style={{ transitionDuration: `${SWAP_MS}ms` }}
+        >
+          <div key={`${shown}-${run}`} className="term-in grid content-start gap-0.5">
+            {script.map((l, i) => {
+              if (tick < timeline[i]) return null;
+              if ('cmd' in l) {
+                const typed = l.cmd.slice(0, tick - timeline[i]);
+                const typing = typed.length < l.cmd.length;
+                return (
+                  <span key={i} className={cn('term-line whitespace-pre-wrap', i > 0 && 'mt-3')}>
+                    <span className="text-[var(--term-green)]">➜</span> <span className="text-[var(--term-cyan)]">~</span> {typed}
+                    {typing && <Caret />}
+                  </span>
+                );
+              }
+              return <span key={i} className={cn('term-line whitespace-pre-wrap', l.gap && 'mt-2.5')}>{l.out}</span>;
+            })}
+            {done && (
+              <span className="mt-3">
+                <span className="text-[var(--term-green)]">➜</span> <span className="text-[var(--term-cyan)]">~</span> <Caret />
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -996,7 +1109,7 @@ function PrivacyList({ icon: Icon, title, items, local = false }: { icon: typeof
       </CardHeader>
       <CardContent className="grid">
         {items.map((x) => (
-          <span key={x} className={cn('flex items-center justify-between gap-4 border-t py-2.5 text-sm', local && 'text-muted-foreground')}>
+          <span key={x} className={cn('flex items-center justify-between gap-4 border-t py-2.5 text-sm font-medium', local && 'text-muted-foreground')}>
             {x}
             {local ? <Lock className="size-3.5 flex-none text-subtle" /> : <Check className="size-3.5 flex-none text-brand" />}
           </span>
@@ -1016,25 +1129,89 @@ function SectionLabel({ icon: Icon, children }: { icon: typeof Lock; children: R
 
 function SectionHeading({ label, icon, title, sub }: { label?: string; icon?: typeof Lock; title: string; sub?: string }) {
   return (
+    // Phones get looser leading and near-normal tracking; the tight display setting only kicks in from sm, where the
+    // type is big enough to carry it.
     <div className="grid justify-items-center gap-4 text-center">
       {label && icon && <SectionLabel icon={icon}>{label}</SectionLabel>}
-      <h2 className="max-w-2xl text-2xl leading-tight font-semibold tracking-tight text-balance sm:text-4xl">{title}</h2>
-      {sub && <p className="max-w-2xl text-[0.95rem] leading-relaxed text-pretty text-muted-foreground">{sub}</p>}
+      <h2 className="max-w-2xl px-2 text-2xl leading-[1.3] font-semibold tracking-[-0.01em] text-balance sm:px-0 sm:text-4xl sm:tracking-tight">{title}</h2>
+      {sub && <p className="max-w-2xl text-sm sm:text-base font-medium leading-relaxed text-pretty text-muted-foreground">{sub}</p>}
     </div>
   );
 }
 
-function Tile({ icon: Icon, title, body, className, children }: { icon: typeof Lock; title: string; body: string; className?: string; children?: ReactNode }) {
+/**
+ * A bento card; hovering only adds a small, soft shadow. A dark shadow disappears on a dark page, so dark mode pairs a
+ * deeper shadow with a faint light edge that reads as the card lifting.
+ */
+function Tile({ icon: Icon, label, accent, title, body, className, children }: {
+  icon: typeof Lock;
+  /** Short eyebrow above the title, led by the icon in the card's accent color. */
+  label: string;
+  accent: string;
+  title: string;
+  body: string;
+  className?: string;
+  children?: ReactNode;
+}) {
   return (
-    <div className={cn('group grid content-between gap-6 rounded-2xl border bg-card p-6 transition-all sm:p-8 hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-lg hover:shadow-black/5', className)}>
+    <div
+      className={cn(
+        'grid content-between gap-6 rounded-2xl border bg-card p-6 transition-shadow duration-300 sm:p-8 hover:shadow-[0_6px_16px_-4px_rgb(0_0_0/0.08)] dark:hover:shadow-[0_0_0_1px_rgb(255_255_255/0.07),0_10px_28px_-8px_rgb(0_0_0/0.75)]',
+        className,
+      )}
+    >
       <div className="grid gap-2.5">
-        <span className="flex size-10 items-center justify-center rounded-lg border bg-surface-2/60 transition-colors group-hover:border-brand/40">
-          <Icon className="size-4.5 text-brand" />
+        <span className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+          <Icon className="size-4" style={{ color: accent }} />
+          {label}
         </span>
-        <h3 className="pt-1.5 font-medium">{title}</h3>
-        <p className="text-sm leading-relaxed text-muted-foreground">{body}</p>
+        <h3 className="pt-1 text-xl font-semibold tracking-tight">{title}</h3>
+        <p className="text-sm leading-relaxed text-muted-foreground font-medium">{body}</p>
       </div>
       {children}
+    </div>
+  );
+}
+
+/** "Your code stays home": one line of the CLI scanning locally. */
+function MiniCollect() {
+  return (
+    <code className="flex w-fit max-w-full items-center gap-2 truncate rounded-lg bg-[var(--term-bg)] px-3 py-1.5 font-mono text-xs text-[var(--term-text)]">
+      <span className="text-[var(--term-green)]">➜</span>tokenburn sync
+      <span className="text-[var(--term-dim)]">·</span>
+      <span className="text-[var(--term-green)]">✔ 3 tools found</span>
+    </code>
+  );
+}
+
+/** "Set it and forget it": the last few half-hourly runs as dots on a line, the latest one live. */
+function MiniSyncs() {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="relative flex flex-1 items-center justify-between">
+        <span aria-hidden className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-border" />
+        {[0, 1, 2, 3, 4].map((i) => (
+          <span
+            key={i}
+            className={cn('relative size-2 rounded-full ring-4 ring-card', i === 4 ? 'bg-[var(--series-3)]' : 'bg-[color-mix(in_oklab,var(--series-3)_45%,var(--tb-surface-2))]')}
+          />
+        ))}
+      </div>
+      <span className="font-mono text-xs text-subtle">every 30 min</span>
+    </div>
+  );
+}
+
+/** "No mystery math": the three sources an amount can come from, each labeled. */
+function MiniCosts() {
+  const sources = [['Billed', 'var(--series-3)'], ['Tool estimate', 'var(--series-2)'], ['List price', 'var(--series-1)']];
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {sources.map(([label, color]) => (
+        <span key={label} className="rounded-full px-2 py-0.5 text-xs font-medium" style={{ color, background: `color-mix(in oklab, ${color} 12%, transparent)` }}>
+          {label}
+        </span>
+      ))}
     </div>
   );
 }

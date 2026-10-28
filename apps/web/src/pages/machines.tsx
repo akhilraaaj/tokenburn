@@ -29,7 +29,7 @@ export function Machines() {
                   <span className="flex size-10 flex-none items-center justify-center rounded-xl border bg-surface-2/60"><Laptop className="size-5 text-muted-foreground" /></span>
                   <div className="grid min-w-0 flex-1 gap-1">
                     <CardTitle className="truncate">{d.name}</CardTitle>
-                    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" title={d.last_sync_at ?? ''}>
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground" title={d.last_sync_at ?? ''}>
                       {stale
                         ? <AlertTriangle className="size-3.5 text-warn-ink" />
                         : <span className="size-1.5 rounded-full" style={{ background: 'var(--series-3)' }} />}

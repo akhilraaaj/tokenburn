@@ -177,4 +177,22 @@
   @keyframes hero-in { from { opacity: 0; transform: translateY(12px); filter: blur(4px); } }
   @media (prefers-reduced-motion: reduce) { .hero-in { animation: none; } }
 
+
+  /* Landing "How it works": the rail below the current step fills over the step's run. */
+  .rail-fill { transform-origin: top; animation: rail-fill linear both; will-change: transform; }
+  @keyframes rail-fill { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+
+  /* Terminal demo: a new step's output settles in, and each new line eases in as it prints. */
+  .term-in { animation: term-in 0.36s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .term-line { animation: term-line 0.26s ease-out both; }
+  @keyframes term-in { from { opacity: 0; transform: translateY(6px); } }
+  @keyframes term-line { from { opacity: 0; transform: translateY(3px); } }
+  @media (prefers-reduced-motion: reduce) { .term-in, .term-line { animation: none; } }
+
+  /* Landing profile preview: the card a switch just changed glows orange for a moment. */
+  .preview-flash { animation: preview-flash 1.4s ease-out; border-radius: var(--radius-xl); }
+  @keyframes preview-flash {
+    from { box-shadow: 0 0 0 2px color-mix(in oklab, var(--series-2) 70%, transparent), 0 0 0 8px color-mix(in oklab, var(--series-2) 18%, transparent); }
+    to { box-shadow: 0 0 0 2px transparent, 0 0 0 8px transparent; }
+  }
 }

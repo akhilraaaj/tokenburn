@@ -89,7 +89,7 @@ function WidgetSkeleton({ children, toolbar = true }: { children: ReactNode; too
 function ProfileSkeleton() {
   return (
     <div className="mx-auto grid w-full max-w-3xl grid-cols-1 gap-6 px-4 pt-6 pb-12 sm:px-6" aria-busy="true" aria-label="Loading profile">
-      <section className="flex items-center gap-4 pb-2 sm:gap-5">
+      <section className="flex items-start gap-4 pb-2 sm:gap-5">
         <Skeleton className="size-14 shrink-0 rounded-full sm:size-16" />
         <div className="grid min-w-0 flex-1 gap-2">
           <Skeleton className="h-5 w-40" />
@@ -139,16 +139,20 @@ function ProfileFrame({ handle, children }: { handle: string; children: ReactNod
 export function ProfileHeader() {
   const { user, loading } = useSession();
   return (
-    <header className="flex h-16 w-full items-center justify-between gap-3 px-4 sm:px-6">
+    // A size container, so the actions can tighten when the header itself is narrow (the landing preview on a
+    // small phone), not just when the viewport is.
+    <header className="@container flex h-16 w-full items-center justify-between gap-3 px-4 sm:px-6">
       <Wordmark to={user ? '/dashboard' : '/'} />
       <div className="flex items-center gap-2">
-        <ThemeToggle />
+        <ThemeToggle className="@max-[20rem]:hidden" />
         {!loading && (user ? (
           <Button asChild size="sm"><Link to="/dashboard">Dashboard</Link></Button>
         ) : (
           <>
-            <Button asChild size="sm" variant="ghost"><a href="/login">Sign in</a></Button>
-            <Button asChild size="sm"><a href="/login">Create your profile</a></Button>
+            <Button asChild size="sm" variant="ghost" className="max-sm:hidden"><a href="/login">Sign in</a></Button>
+            <Button asChild size="sm">
+              <a href="/login"><span className="@max-[20rem]:hidden">Create your profile</span><span className="hidden @max-[20rem]:inline">Sign up</span></a>
+            </Button>
           </>
         ))}
       </div>
@@ -227,7 +231,7 @@ export function ProfileView({ profile, preview = false }: { profile: PublicProfi
 
   return (
     <>
-      <section className="flex items-center gap-4 pb-2 sm:gap-5">
+      <section className="flex items-start gap-4 pb-2 sm:gap-5">
         <Avatar className="size-14 shrink-0 rounded-full ring-1 ring-border ring-offset-2 ring-offset-background sm:size-16">
           {profile.github && <AvatarImage src={profile.github.avatar_url} alt="" className="rounded-full" />}
           <AvatarFallback className="rounded-full text-base">{name.slice(0, 2).toUpperCase()}</AvatarFallback>
