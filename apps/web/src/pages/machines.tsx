@@ -62,7 +62,7 @@ export function Machines() {
           <CopyCommand command={data.origin.startsWith('http://localhost') ? `tokenburn setup --api ${data.origin}` : 'npm install -g use-tokenburn && tokenburn setup'} />
         </CardContent>
       </Card>
-      <p className="text-xs text-subtle">Automatic sync runs every 30 minutes. A warning appears when a machine hasn't synced for 2 days. Disconnect machines in Settings.</p>
+      <p className="text-xs text-subtle font-medium leading-snug">Automatic sync runs every 30 minutes. A warning appears when a machine hasn't synced for 2 days. Disconnect machines in Settings.</p>
     </>
   );
 }

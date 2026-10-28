@@ -23,7 +23,7 @@ export function Models() {
           <ModelTable rows={data.rows} colorOf={colorOf} tokens costs billing />
         </CardContent>
       </Card>
-      <p className="text-xs text-subtle">
+      <p className="text-xs text-subtle font-medium leading-snug">
         "Auto" means Cursor didn't report which model served the request. * = some requests had no known price.
       </p>
     </>

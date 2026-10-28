@@ -107,9 +107,9 @@ export function Overview() {
           {providers.map((p) => <ToolCard key={p} provider={p} rows={data.rows.filter((r) => r.provider === p)} />)}
         </div>
       ) : (
-        <p className="text-sm text-subtle">No usage in this range.</p>
+        <p className="text-sm text-subtle font-medium leading-snug">No usage in this range</p>
       )}
-      <p className="text-xs text-subtle">
+      <p className="text-xs text-subtle font-medium leading-snug">
         Totals come from each tool's own records. Tools count input differently (noted on each card), so the combined total is indicative.
         Estimated cost uses billed or tool-reported cost when available, otherwise public API list prices. It isn't what a subscription costs.
       </p>

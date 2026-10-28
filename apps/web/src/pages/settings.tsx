@@ -117,12 +117,12 @@ export function Settings() {
       <Card>
         <CardHeader>
           <CardTitle>Username</CardTitle>
-          <CardDescription>Your public profile URL. Letters, digits, _ or -, 3–30 characters.</CardDescription>
+          <CardDescription className="font-medium">Your public profile URL. Letters, digits, _ or -, 3–30 characters.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={saveUsername} className="grid max-w-lg grid-cols-1 gap-2">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="flex h-9 min-w-0 flex-1 overflow-hidden rounded-lg border bg-background shadow-xs transition-shadow focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50">
+              <div className="flex h-9 min-w-0 flex-1 overflow-hidden rounded-lg border bg-background shadow-xs transition-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/40">
                 <span className="flex h-full shrink-0 items-center border-r bg-surface-2 px-3 font-mono text-sm text-muted-foreground font-medium">
                   <span className="hidden sm:inline">{host}/</span>@
                 </span>
@@ -168,7 +168,7 @@ export function Settings() {
       <Card>
         <CardHeader>
           <CardTitle>Public profile</CardTitle>
-          <CardDescription>Private by default. When public, only what you switch on is shown. Device names, file paths, session contents and emails never are.</CardDescription>
+          <CardDescription className="font-medium">Private by default. When public, only what you switch on is shown. Device names, file paths, session contents and emails never are.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-5">
           <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
@@ -199,7 +199,7 @@ export function Settings() {
         </CardContent>
         <CardFooter className="justify-between gap-3 border-t">
           {data.user.username ? (
-            <Button asChild variant="link" className="px-0"><Link to={`/@${data.user.username}`}>View profile <ExternalLink /></Link></Button>
+            <Button asChild variant="link" className="px-0 font-medium"><Link to={`/@${data.user.username}`}>View profile <ExternalLink /></Link></Button>
           ) : <span />}
           <Button onClick={saveProfile} disabled={saving}>{saving ? 'Saving…' : 'Save profile'}</Button>
         </CardFooter>
@@ -208,7 +208,7 @@ export function Settings() {
       <Card>
         <CardHeader>
           <CardTitle>Machines</CardTitle>
-          <CardDescription>Disconnecting a machine also deletes the usage it uploaded.</CardDescription>
+          <CardDescription className="font-medium">Disconnecting a machine also deletes the usage it uploaded.</CardDescription>
         </CardHeader>
         <CardContent className="grid">
           {data.devices.length ? data.devices.map((d, i) => (
@@ -240,7 +240,7 @@ export function Settings() {
       <Card className="ring-destructive/30">
         <CardHeader>
           <CardTitle>Danger zone</CardTitle>
-          <CardDescription>Connected machines upload their history again on the next sync unless you disconnect them.</CardDescription>
+          <CardDescription className="font-medium">Connected machines upload their history again on the next sync unless you disconnect them.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-5">
           <div className="flex flex-wrap items-center justify-between gap-3">

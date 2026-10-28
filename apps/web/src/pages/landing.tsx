@@ -642,7 +642,7 @@ function HandleClaim({ id = 'handle', handle, onChange }: { id?: string; handle:
     <div className="grid w-full max-w-xl grid-cols-1 gap-4">
       <form
         action="/login"
-        className="flex overflow-hidden rounded-xl border bg-card shadow-xs transition-shadow focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/40"
+        className="flex overflow-hidden rounded-xl border bg-card shadow-xs transition-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/40"
       >
         <label htmlFor={id} className="flex min-w-0 flex-1 items-stretch">
           <span className="flex shrink-0 items-center border-r bg-surface-2 px-3 font-mono text-sm text-muted-foreground">

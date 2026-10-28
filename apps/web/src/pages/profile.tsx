@@ -271,7 +271,7 @@ export function ProfileView({ profile, preview = false }: { profile: PublicProfi
 
       {profile.daily && !profile.first_day && (
         <Card>
-          <CardContent className="py-10 text-center text-sm text-muted-foreground">No usage in the last 90 days yet.</CardContent>
+          <CardContent className="py-10 text-center text-sm text-muted-foreground">No usage in the last 90 days yet</CardContent>
         </Card>
       )}
 

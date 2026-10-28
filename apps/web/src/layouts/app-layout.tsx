@@ -123,7 +123,7 @@ export function AppLayout() {
                     <div className="flex size-8 items-center justify-center rounded-md border bg-background shadow-xs"><LogoMark className="size-4" /></div>
                     <div className="grid leading-tight group-data-[collapsible=icon]:hidden gap-0.5">
                       <span className="font-semibold">tokenburn</span>
-                      <span className="text-xs text-subtle font-medium">Dashboard</span>
+                      <span className="text-xs text-subtle font-semibold">Dashboard</span>
                     </div>
                   </Link>
                 </SidebarMenuButton>
@@ -248,7 +248,7 @@ function ProfileStatus({ username, isPublic }: { username: string | null; isPubl
               <Link to={href}>
                 <span className="size-1.5 flex-none rounded-full" style={{ background: live ? 'var(--series-3)' : 'var(--series-other)' }} />
                 <span className="truncate font-medium text-sidebar-foreground max-w-30">{username ? `@${username}` : 'Your profile'}</span>
-                <span className="ml-auto flex items-center gap-1 text-[0.7rem] text-sidebar-foreground/55">
+                <span className="ml-auto flex items-center gap-1 text-[0.7rem] text-sidebar-foreground/55 font-medium">
                   {live ? 'Live' : username ? 'Private' : 'Setup'}
                   {live && <ArrowUpRight className="size-3" />}
                 </span>
