@@ -400,8 +400,8 @@ export function Landing() {
             <PrivacyList icon={RefreshCw} title="Synced: only totals" items={SYNCED} />
             <PrivacyList icon={Globe} title="On your profile: your call" items={PROFILE_CONTROLS} />
           </div>
-          <p className="flex items-center justify-center gap-2 text-center text-xs text-muted-foreground font-medium">
-            <Lock className="size-3.5 flex-none text-subtle" />
+          <p className="text-center text-xs font-medium text-muted-foreground">
+            <Lock className="mr-1 inline-block size-3.5 align-[-0.25em] text-subtle" aria-hidden />
             Setup shows the exact upload and asks before the first one.
           </p>
         </section>
@@ -411,12 +411,12 @@ export function Landing() {
           <SectionHeading title="Questions, answered" />
           <div className="mx-auto grid w-full max-w-3xl divide-y rounded-2xl border bg-card">
             {FAQ.map((f) => (
-              <details key={f.q} className="group px-6 py-5 sm:px-7 [&_summary::-webkit-details-marker]:hidden">
+              <details key={f.q} name="faq" className="group px-6 py-5 sm:px-7 [&_summary::-webkit-details-marker]:hidden">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-medium">
                   {f.q}
                   <ChevronDown className="size-4 flex-none text-subtle transition-transform group-open:rotate-180" />
                 </summary>
-                <p className="pt-3 pr-8 text-sm leading-relaxed font-medium text-pretty text-muted-foreground">{f.a}</p>
+                <p className="pt-3 sm:pr-8 pr-0 text-sm leading-relaxed font-medium text-pretty text-muted-foreground">{f.a}</p>
               </details>
             ))}
           </div>
@@ -794,10 +794,11 @@ function WindowDots() {
  */
 /**
  * Marks a demo as made-up numbers. Shown only to signed-in visitors: their own handle and avatar appear in the
- * demos, so without it the example stats could pass for theirs.
+ * demos, so without it the example stats could pass for theirs. The negative margins keep it inside the title bar's
+ * padding, so the bar is the same height with or without it and the page doesn't shift when the session loads.
  */
 function ExampleBadge() {
-  return <Badge variant="secondary" className="flex-none font-normal">Example data</Badge>;
+  return <Badge variant="secondary" className="-my-1 flex-none font-medium">Example data</Badge>;
 }
 
 function ProfilePreview({ profile, labeled }: { profile: PublicProfile; labeled: boolean }) {
@@ -848,7 +849,7 @@ const HeroDashboard = memo(function HeroDashboard({ rows, since, colorOf, labele
       <div className="flex items-center gap-2 border-b bg-card px-4 py-2.5">
         <WindowDots />
         <span className="ml-3 truncate font-mono text-xs text-subtle">{host}/dashboard</span>
-        {labeled && <span className="ml-auto"><ExampleBadge /></span>}
+        {labeled && <span className="ml-auto flex"><ExampleBadge /></span>}
       </div>
       <div className="flex text-left">
         {/* Content */}

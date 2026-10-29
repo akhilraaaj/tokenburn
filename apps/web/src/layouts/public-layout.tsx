@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Outlet, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { Wordmark } from '@/components/brand';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
@@ -32,10 +32,14 @@ function HomeWordmark({ className }: { className?: string }) {
 export function PublicLayout() {
   const { user, loading } = useSession();
   const { pathname } = useLocation();
+  const navigationType = useNavigationType();
   // Block body on purpose: an effect must return nothing or a cleanup function. Some browser extensions make
   // window.scrollTo return a Promise, which React would later try to call as a cleanup and crash.
   useEffect(() => {
-    window.scrollTo(0, 0);
+    // Once per page change: links start at the top, while a reload or back/forward (POP) keeps the browser's restored
+    // position. navigationType is read, not a dependency, on purpose: same-page replaces (the landing page clearing
+    // its scroll-to-section state) must not re-run this and jump back to the top.
+    if (navigationType !== 'POP') window.scrollTo(0, 0);
     if (!pathname.startsWith('/@') && !pathname.startsWith('/%40')) {
       document.title = pathname === '/' ? 'tokenburn · AI coding usage, tracked locally' : pathname === '/welcome' ? 'Welcome · tokenburn' : 'Not found · tokenburn';
     }
