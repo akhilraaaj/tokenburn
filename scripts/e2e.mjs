@@ -102,7 +102,7 @@ assert.match(cli('sync', '--yes'), /Synced \d+ daily totals/);
 assert.match(cli('sync', '--yes'), /Up to date\. Nothing new since the last sync/);
 step('first sync (approved with --yes) + idempotent re-sync');
 
-assert.match(cli('import-cursor', path.join(root, 'fixtures/cursor/usage-events.sample.csv'), '--yes'), /Synced 5 account rows/);
+assert.match(cli('import-cursor', path.join(root, 'fixtures/cursor/usage-events.sample.csv'), '--yes'), /Synced \d+ Cursor\/OpenRouter days?/);
 const st = cli('status');
 assert.match(st, /Claude Code local transcripts\s+5 requests/);
 assert.match(st, /Codex CLI local session files\s+1 request\b/);
@@ -113,13 +113,13 @@ const stats = cli('stats', '--days', '365');
 assert.match(stats, /Claude Code/);
 assert.match(stats, /2\.7K output/); // 1519 + 734 + 300 + 100 + 60 = 2713
 assert.match(stats, /Codex CLI/);
-assert.match(stats, /\$0\.04 estimated cost/); // only claude-sonnet-4-6 priced: A 0.023844 + B 0.0115875 + D 0.00171
+assert.match(stats, /\$0\.46 estimated cost \(\$0\.42 billed by providers/); // claude-sonnet-4-6 list price (A 0.023844 + B 0.0115875 + D 0.00171) + the Cursor fixture's billed $0.42
 assert.match(stats, /longest 3 days/); // Oct 1-3 (Claude, Codex, Cursor fixtures)
 step('stats renders totals, estimated cost, streaks');
 
 w = await web('GET', '/api/web/dashboard?days=365');
 const hl = w.json.highlights;
-assert.ok(Math.abs(hl.costUsd - 0.0371415) < 1e-6, `cost ${hl.costUsd}`);
+assert.ok(Math.abs(hl.costUsd - 0.4571415) < 1e-6, `cost ${hl.costUsd}`); // list-price estimate 0.0371415 + Cursor billed 0.42
 assert.equal(hl.longestStreak, 3);
 assert.equal(hl.totalTokens, w.json.rows.reduce((n, r) => n + (r.input_tokens ?? 0) + (r.output_tokens ?? 0) + (r.cache_read_tokens ?? 0) + (r.cache_write_tokens ?? 0), 0));
 assert.ok(hl.unpricedEvents > 0);
@@ -217,22 +217,27 @@ after = (await web('GET', '/api/web/dashboard?days=365')).json;
 assert.equal(after.highlights.totalTokens, before.highlights.totalTokens);
 step('after a server-side delete, the next sync restores full history (not just changed days)');
 
-// OpenRouter days can be revised by the provider: the server keeps the latest values.
+// Account-wide daily totals: OpenRouter days can be revised by the provider, so the latest upload wins; for Cursor the
+// larger day total wins, so a less complete export from another machine never lowers (or doubles) a day.
 const token = JSON.parse(fs.readFileSync(path.join(env.TOKENBURN_HOME, 'config.json'), 'utf8')).device_token;
-const orEvent = (out) => ({
-  provider: 'openrouter', model_id: 'openai/gpt-4.1', occurred_at: '2026-10-05T00:00:00.000Z', session_id: null, input_tokens: 10, output_tokens: out,
-  cache_read_tokens: 0, cache_write_tokens: null, usage_source: 'openrouter_activity', measurement_type: 'measured', billing_mode: 'api',
-  dedupe_key: 'or:e2e0000000000001', event_count: 2, provider_fields: {}, cost_usd: 0.01, billed_cost_usd: 0.01,
+const ingest = (p, body) => fetch(`${API}${p}`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+const dayTotal = (source, provider, model_id, events, out) => ({
+  provider, usage_source: source, model_id, day: '2026-10-05', billing_mode: 'api', measurement_type: 'measured', event_count: events,
+  input_tokens: 10, output_tokens: out, cache_read_tokens: 0, cache_write_tokens: null, incomplete_events: 0, cost_usd: 0.01,
+  billed_cost_usd: source === 'openrouter_activity' ? 0.01 : null, unpriced_events: 0, session_count: null,
 });
-for (const out of [100, 250]) {
-  const r = await fetch(`${API}/api/ingest/events`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ events: [orEvent(out)] }) });
-  assert.equal(r.status, 200);
+const outFor = async (provider) => (await web('GET', '/api/web/dashboard?days=365')).json.rows
+  .filter((r) => r.provider === provider && r.day === '2026-10-05').reduce((n, r) => n + r.output_tokens, 0);
+for (const out of [100, 250]) assert.equal((await ingest('/api/ingest/account-daily', { buckets: [dayTotal('openrouter_activity', 'openrouter', 'openai/gpt-4.1', 2, out)] })).status, 200);
+assert.equal(await outFor('openrouter'), 250);
+for (const [events, out] of [[5, 500], [3, 300], [8, 800]]) {
+  assert.equal((await ingest('/api/ingest/account-daily', { buckets: [dayTotal('cursor_csv', 'cursor', 'e2e-model', events, out)] })).status, 200);
 }
-const orRows = (await web('GET', '/api/web/dashboard?days=365')).json.rows.filter((r) => r.provider === 'openrouter');
-assert.equal(orRows.reduce((n, r) => n + r.output_tokens, 0), 250);
-const badDay = await fetch(`${API}/api/ingest/events`, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ events: [{ ...orEvent(1), occurred_at: '9999-01-01T00:00:00.000Z', dedupe_key: 'or:e2e0000000000002' }] }) });
-assert.equal(badDay.status, 400);
-step('OpenRouter revisions upsert; out-of-range dates rejected');
+const cursorE2e = (await web('GET', '/api/web/dashboard?days=365')).json.rows.filter((r) => r.model_id === 'e2e-model');
+assert.equal(cursorE2e.reduce((n, r) => n + r.output_tokens, 0), 800); // 5 → 3 ignored → 8
+assert.equal((await ingest('/api/ingest/account-daily', { buckets: [{ ...dayTotal('openrouter_activity', 'openrouter', 'x', 1, 1), day: '9999-01-01' }] })).status, 400);
+assert.equal((await ingest('/api/ingest/events', { events: [] })).status, 426); // CLI 0.3.x: told to update
+step('account day totals: OpenRouter revisions replace, larger Cursor day wins, bad dates rejected, old CLIs told to update');
 
 cli('delete', '--provider', 'cursor', '--yes');
 assert.doesNotMatch(cli('status'), /Cursor usage CSV export/);

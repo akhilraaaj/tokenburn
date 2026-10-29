@@ -18,7 +18,7 @@ import { withLock } from './lock.ts';
 import { loadPrices } from './prices.ts';
 import { compact, renderStats } from './stats.ts';
 import { Store } from './store.ts';
-import { api, ApiError, COLLECTOR_VERSION, NetworkError, planSync, runSync } from './sync.ts';
+import { api, ApiError, COLLECTOR_VERSION, NetworkError, planSync, runSync, type SyncResult } from './sync.ts';
 import * as ui from './ui.ts';
 
 const { c, sym } = ui;
@@ -128,6 +128,8 @@ function flag(args: string[], name: string): string | undefined {
 const ctxOf = (cfg: Config): SourceContext => ({ extraDirs: cfg.extra_dirs, billingOverrides: cfg.billing_overrides, claudeApiKeySeen: cfg.claude_api_key_seen });
 const home = (p: string) => (p.startsWith(os.homedir()) ? `~${p.slice(os.homedir().length)}` : p);
 const isLocalServer = (url: string) => /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/.test(url);
+/** `import-cursor` reads the whole file into memory; real exports are a few MB (a heavy year, tens). */
+const MAX_IMPORT_BYTES = 200 * 1024 * 1024;
 const plural = (n: number, w: string) => `${n.toLocaleString('en-US')} ${w}${n === 1 ? '' : 's'}`;
 
 function ago(iso: string | null | undefined): string {
@@ -298,17 +300,15 @@ function privacyBox() {
   ], { title: c.bold('What gets uploaded') });
 }
 
-function syncSummary(r: { buckets: number; deletedBuckets: number; sessions: number; accountInserted: number; accountDuplicates: number }) {
-  if (!r.buckets && !r.deletedBuckets && !r.sessions && !r.accountInserted) {
-    return `Up to date. Nothing new since the last sync${r.accountDuplicates ? ` (${r.accountDuplicates} rows already on the server)` : ''}.`;
-  }
+function syncSummary(r: SyncResult) {
+  if (!r.buckets && !r.deletedBuckets && !r.sessions && !r.accountDays) return 'Up to date. Nothing new since the last sync.';
   const parts = [
     r.buckets && plural(r.buckets, 'daily total'),
+    r.accountDays && plural(r.accountDays, 'Cursor/OpenRouter day'),
     r.deletedBuckets && `${r.deletedBuckets} removed`,
     r.sessions && plural(r.sessions, 'session'),
-    r.accountInserted && plural(r.accountInserted, 'account row'),
   ].filter(Boolean);
-  return `Synced ${parts.join(' · ')}${r.accountDuplicates ? c.dim(` (${r.accountDuplicates} rows already on the server)`) : ''}`;
+  return `Synced ${parts.join(' · ')}${r.more ? c.dim(' (more on the next sync)') : ''}`;
 }
 
 async function doSync(store: Store, cfg: Config, opts: { yes: boolean; quiet?: boolean }) {
@@ -609,8 +609,8 @@ async function autoSync(store: Store, cfg: Config) {
     }, () => null);
     if (!r) return; // another sync (manual, watch) is running; the next scheduled run catches up
     store.setMeta('last_sync_error', '');
-    if (r.buckets || r.deletedBuckets || r.sessions || r.accountInserted) {
-      log(`synced ${r.buckets} daily totals, ${r.sessions} sessions, ${r.accountInserted} account rows`);
+    if (r.buckets || r.deletedBuckets || r.sessions || r.accountDays) {
+      log(`synced ${r.buckets} daily totals, ${r.accountDays} Cursor/OpenRouter days, ${r.sessions} sessions${r.more ? ' (more next run)' : ''}`);
     }
   } catch (e) {
     const msg = (e as Error).message ?? String(e);
@@ -635,7 +635,7 @@ async function watch(store: Store, cfg: Config) {
         await collectAll(store, fresh, { network: true });
         return runSync(store, fresh, health(store, fresh), await loadPrices());
       }, () => null);
-      if (r && (r.buckets || r.sessions || r.accountInserted)) ui.log(`${time()} ${sym.ok} ${syncSummary(r)}`);
+      if (r && (r.buckets || r.sessions || r.accountDays)) ui.log(`${time()} ${sym.ok} ${syncSummary(r)}`);
       store.setMeta('last_sync_error', '');
     } catch (e) {
       store.setMeta('last_sync_error', String((e as Error).message ?? e));
@@ -746,7 +746,7 @@ async function main() {
       const plan = planSync(store, cfg, await loadPrices());
       ui.log();
       ui.info(`The next sync would upload ${plural(plan.bucketUpserts.length, 'daily total')}, ` +
-        `${plan.sessionUpserts.length.toLocaleString('en-US')} hashed session ${plan.sessionUpserts.length === 1 ? 'summary' : 'summaries'} and ${plural(plan.accountEvents.length, 'account row')}.`);
+        `${plan.sessionUpserts.length.toLocaleString('en-US')} hashed session ${plan.sessionUpserts.length === 1 ? 'summary' : 'summaries'} and ${plural(plan.accountUpserts.length, 'Cursor/OpenRouter daily total')}.`);
       return;
     }
     case 'sync':
@@ -776,6 +776,9 @@ async function main() {
       const file = args[0];
       if (!file) throw new Error('Usage: tokenburn import-cursor <file.csv>\n  Download it from cursor.com → Dashboard → Usage → Export CSV.');
       if (!fs.existsSync(file)) throw new Error(`File not found: ${file}`);
+      // Read whole into memory: refuse sizes no real export reaches (a year of heavy use is a few tens of MB).
+      const size = fs.statSync(file).size;
+      if (size > MAX_IMPORT_BYTES) throw new Error(`${file} is ${Math.round(size / 1048576)} MB; Cursor exports are far smaller (the limit is ${MAX_IMPORT_BYTES / 1048576} MB). Export a shorter date range.`);
       const r = await parseCursorCsv(fs.readFileSync(file, 'utf8'));
       if (r.fatal) throw new Error(`That doesn't look like a Cursor usage export: ${r.fatal}`);
       ui.ok(`Read ${plural(r.totalRows, 'row')}: ${r.records.length} valid` +

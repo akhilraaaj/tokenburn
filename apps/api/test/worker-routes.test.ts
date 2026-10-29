@@ -23,6 +23,9 @@ let worker: Unstable_DevWorker;
 let db: D1Database; // the same local database the dev server reads, for changes that bypass the API
 let disposeProxy: () => Promise<void>;
 const CAROL_SESSION = 'carol-session-token';
+const ALICE_DEVICE = 'alice-device-token';
+const BOB_DEVICE = 'bob-device-token';
+const sha = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
 const get = (p: string, init?: RequestInit) => worker.fetch(p, { redirect: 'manual', ...init } as any) as unknown as Promise<Response>;
 const page = async (p: string) => {
   const res = await get(p);
@@ -52,6 +55,7 @@ beforeAll(async () => {
     compatibility_date: '2025-09-01',
     assets: { directory: 'public', binding: 'ASSETS', not_found_handling: 'single-page-application', run_worker_first: true },
     d1_databases: [{ binding: 'DB', database_name: 'tokenburn', database_id: 'local-test' }],
+    vars: { DAILY_ROW_BUDGET: '40' }, // small, so the per-account daily write budget can be hit in a test
   }));
   const persist = path.join(tmp, 'state');
 
@@ -75,6 +79,8 @@ beforeAll(async () => {
     db.prepare("INSERT INTO profiles (user_id, is_public, show_providers, updated_at) VALUES ('u3', 0, 1, ?)").bind(t),
     db.prepare('INSERT INTO auth_sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)')
       .bind(crypto.createHash('sha256').update(CAROL_SESSION).digest('hex'), 'u3', new Date(Date.now() + 864e5).toISOString()),
+    db.prepare("INSERT INTO devices (id, user_id, name, token_hash, created_at) VALUES ('d1', 'u1', 'alice-mac', ?, ?)").bind(sha(ALICE_DEVICE), t),
+    db.prepare("INSERT INTO devices (id, user_id, name, token_hash, created_at) VALUES ('d2', 'u2', 'bob-mac', ?, ?)").bind(sha(BOB_DEVICE), t),
   ]);
 
   worker = await unstable_dev(path.join(tmp, 'worker.js'), {
@@ -187,6 +193,78 @@ describe('publishing a profile', () => {
     const after = await get('/api/public/carol');
     expect(after.status).toBe(200);
     await after.text();
+  });
+});
+
+describe('account-wide daily totals (Cursor, OpenRouter)', () => {
+  const post = (p: string, device: string, body: unknown) =>
+    get(p, { method: 'POST', headers: { authorization: `Bearer ${device}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const day = (usage_source: string, provider: string, model_id: string, event_count: number, output_tokens: number, extra = {}) => ({
+    provider, usage_source, model_id, day: '2026-10-05', billing_mode: 'api', measurement_type: 'measured', event_count,
+    input_tokens: 10, output_tokens, cache_read_tokens: 0, cache_write_tokens: null, incomplete_events: 0, cost_usd: 0.5,
+    billed_cost_usd: null, unpriced_events: 0, session_count: null, ...extra,
+  });
+  const stored = (model: string) =>
+    db.prepare("SELECT event_count, output_tokens FROM account_daily WHERE user_id = 'u1' AND model_id = ?").bind(model).first<{ event_count: number; output_tokens: number }>();
+
+  it('keeps the larger Cursor day: overlapping exports from several machines never lower or double a day', async () => {
+    for (const [events, out] of [[5, 500], [3, 300], [8, 800], [8, 999]]) {
+      const res = await post('/api/ingest/account-daily', ALICE_DEVICE, { buckets: [day('cursor_csv', 'cursor', 'cursor-model', events, out)] });
+      expect(res.status).toBe(200);
+      await res.text();
+    }
+    // 5 → 3 (less complete export) ignored → 8 → a tie keeps what's there
+    expect(await stored('cursor-model')).toEqual({ event_count: 8, output_tokens: 800 });
+  });
+
+  it('takes the latest OpenRouter day, which the provider can revise either way', async () => {
+    for (const [events, out] of [[4, 400], [2, 250]]) {
+      await (await post('/api/ingest/account-daily', ALICE_DEVICE, { buckets: [day('openrouter_activity', 'openrouter', 'or-model', events, out, { billed_cost_usd: 0.5 })] })).text();
+    }
+    expect(await stored('or-model')).toEqual({ event_count: 2, output_tokens: 250 });
+  });
+
+  it('deletes the keys a machine no longer has, and rejects device sources, bad days and bad keys', async () => {
+    const del = await post('/api/ingest/account-daily', ALICE_DEVICE, { deletes: [{ provider: 'openrouter', usage_source: 'openrouter_activity', model_id: 'or-model', day: '2026-10-05', billing_mode: 'api', measurement_type: 'measured' }] });
+    expect(del.status).toBe(200);
+    await del.text();
+    expect(await stored('or-model')).toBeNull();
+    for (const body of [
+      { buckets: [day('claude_code_jsonl', 'claude_code', 'x', 1, 1)] }, // device-scoped: goes to /api/ingest/daily
+      { buckets: [day('cursor_csv', 'cursor', 'x', 1, 1, { day: '9999-01-01' })] },
+      { buckets: [day('cursor_csv', 'cursor', 'x', -1, 1)] },
+      { deletes: [{ provider: 'claude_code', usage_source: 'claude_code_jsonl', model_id: 'x', day: '2026-10-05', billing_mode: 'api', measurement_type: 'measured' }] },
+    ]) {
+      const res = await post('/api/ingest/account-daily', ALICE_DEVICE, body);
+      expect(res.status).toBe(400);
+      await res.text();
+    }
+  });
+
+  it('feeds the stored days into the read side (the query behind dashboards and profiles)', async () => {
+    // /api/me/summary is uncached and built on dailyRows, like the dashboard and the public profile.
+    const res = await get('/api/me/summary', { headers: { authorization: `Bearer ${ALICE_DEVICE}` } });
+    const { sources } = await res.json() as { sources: { usage_source: string; events: number; first_day: string }[] };
+    expect(sources.find((x) => x.usage_source === 'cursor_csv')).toMatchObject({ events: 8, first_day: '2026-10-05' });
+  });
+
+  it('tells CLI 0.3.x to update instead of storing per-request rows', async () => {
+    const res = await post('/api/ingest/events', ALICE_DEVICE, { events: [] });
+    expect(res.status).toBe(426);
+    expect((await res.json() as any).error).toContain('npm install -g use-tokenburn');
+  });
+
+  it("stops an account at its daily write budget without touching other accounts' uploads", async () => {
+    const many = (n: number, from = 0) => Array.from({ length: n }, (_, i) => day('cursor_csv', 'cursor', `budget-${from + i}`, 1, 1));
+    const first = await post('/api/ingest/account-daily', BOB_DEVICE, { buckets: many(30) });
+    expect(first.status).toBe(200); // 30 of the test budget's 40
+    await first.text();
+    const over = await post('/api/ingest/account-daily', BOB_DEVICE, { buckets: many(20, 30) });
+    expect(over.status).toBe(429);
+    expect((await over.json() as any).error).toContain('tomorrow');
+    const other = await post('/api/ingest/account-daily', ALICE_DEVICE, { buckets: [day('cursor_csv', 'cursor', 'still-fine', 1, 1)] });
+    expect(other.status).toBe(200);
+    await other.text();
   });
 });
 

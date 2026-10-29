@@ -1,5 +1,5 @@
 import {
-  BILLING_MODES, MEASUREMENT_TYPES, PROVIDERS, SOURCE_SCOPE, USAGE_SOURCES, isNonNegInt, isNonNegNumber, validateRecord,
+  BILLING_MODES, MEASUREMENT_TYPES, PROVIDERS, SOURCE_SCOPE, USAGE_SOURCES, isNonNegInt, isNonNegNumber,
 } from '../../../packages/shared/src/schema.ts';
 import {
   RESERVED, USERNAME_RE, checkOrigin, cleanUsername, clearPendingCookie, clearWantedCookie, pickUsername, readWanted, wantedCookie, clearStateCookie, createDevice, deleteDeviceAndData, devIdentity,
@@ -15,7 +15,6 @@ import { HttpError, SECURITY_HEADERS, json, now, rateLimit, randomToken, readJso
 const LOGIN_TTL_S = 900;
 const MAX_BATCH = 1000;
 const MAX_SESSION_ROWS_PER_USER = 200_000; // sessions are kept two years; this is far above real use
-const MAX_EVENT_BATCH = 500; // keeps the single JSON parameter well under D1's 2 MB value limit
 const BUCKET_FIELDS = ['input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_tokens'] as const;
 
 type Route = (req: Request, env: Env, params: Record<string, string>, ctx?: ExecutionContext) => Promise<Response>;
@@ -36,9 +35,52 @@ function validDay(day: unknown): boolean {
 }
 const validInstant = (s: unknown) => typeof s === 'string' && !Number.isNaN(Date.parse(s)) && validDay(new Date(s).toISOString().slice(0, 10));
 
+/** Charges `rows` to this account's write budget for today (UTC), or throws 429 once it's spent. */
+async function spendRowBudget(env: Env, userId: string, rows: number) {
+  if (!rows) return;
+  const day = new Date().toISOString().slice(0, 10);
+  const windowStart = Math.floor(Date.parse(day) / 1000);
+  const row = await env.DB.prepare(
+    `INSERT INTO rate_limits (key, window_start, count) VALUES (?1, ?2, ?3)
+     ON CONFLICT (key) DO UPDATE SET
+       count = CASE WHEN window_start = excluded.window_start THEN count + excluded.count ELSE excluded.count END,
+       window_start = excluded.window_start
+     RETURNING count`,
+  ).bind(`budget:${userId}`, windowStart, rows).first<{ count: number }>();
+  const limit = Number(env.DAILY_ROW_BUDGET) || DAILY_ROW_BUDGET;
+  if ((row?.count ?? 0) > limit) throw new HttpError(429, "This account's daily upload limit is reached. The rest syncs automatically tomorrow.");
+}
+
+const rowCountKey = (table: string, userId: string) => new Request(`https://public-cache.internal/rows/${table}/${userId}`);
+
+/**
+ * An account's row count in one table, for the storage ceilings. Counting scans all of the account's rows, so the
+ * answer is kept at the edge for an hour instead of being recounted on every upload: in between, the daily row
+ * budget bounds how far past the ceiling an account can get.
+ */
+async function cachedRowCount(env: Env, ctx: ExecutionContext | undefined, table: 'usage_daily' | 'usage_sessions' | 'account_daily', userId: string): Promise<number> {
+  const key = rowCountKey(table, userId);
+  const hit = await caches.default.match(key).catch(() => undefined);
+  if (hit) return Number(await hit.text()) || 0;
+  const n = (await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE user_id = ?`).bind(userId).first<{ n: number }>())?.n ?? 0;
+  const put = caches.default.put(key, new Response(String(n), { headers: { 'cache-control': 'max-age=3600' } })).catch(() => {});
+  if (ctx) ctx.waitUntil(put); else await put;
+  return n;
+}
+
+async function assertRoom(env: Env, ctx: ExecutionContext | undefined, table: 'usage_daily' | 'usage_sessions' | 'account_daily', userId: string, adding: number, max: number) {
+  if (adding && (await cachedRowCount(env, ctx, table, userId)) + adding > max) throw new HttpError(413, 'Account storage limit reached. Contact support.');
+}
+
 /** Generous per-account ceilings so one account can't fill the shared database. */
 const MAX_DAILY_ROWS_PER_USER = 200_000;
-const MAX_ACCOUNT_EVENTS_PER_USER = 500_000;
+const MAX_ACCOUNT_DAILY_ROWS_PER_USER = 50_000; // one row per day, tool and model: years of heavy use stay far below
+/**
+ * Rows one account may write per UTC day across all uploads (D1's free plan allows 100,000 rows written per day for
+ * the whole app). A first sync of years of history is a few thousand rows and the CLI spreads larger uploads over
+ * several runs, so normal use never gets near it; it stops one broken or abusive client from blocking everyone.
+ */
+const DAILY_ROW_BUDGET = 20_000;
 const MAX_HEALTH_BYTES = 4000;
 
 /** Sign-in failures go back to the app as a fixed code, never free text from the URL. */
@@ -89,12 +131,13 @@ async function deleteDataFor(env: Env, userId: string, provider: string) {
   await env.DB.batch([
     bind(`DELETE FROM usage_daily WHERE user_id = ?${filter}`),
     bind(`DELETE FROM usage_sessions WHERE user_id = ?${filter}`),
-    bind(`DELETE FROM account_events WHERE user_id = ?${filter}`),
+    bind(`DELETE FROM account_daily WHERE user_id = ?${filter}`),
     // Collectors see the new marker on their next sync and re-upload their full history, so the server
     // never ends up with only the days that happened to change after a deletion.
     env.DB.prepare('UPDATE users SET data_reset_at = ? WHERE id = ?').bind(now(), userId),
   ]);
   await purgeUser(env, userId);
+  await purgeRowCounts(userId);
 }
 
 /** Drops this user's cached public profile, so deleted usage doesn't linger on it. */
@@ -108,7 +151,7 @@ async function deleteAccountFor(env: Env, userId: string) {
   await env.DB.batch([
     env.DB.prepare('DELETE FROM usage_daily WHERE user_id = ?').bind(userId),
     env.DB.prepare('DELETE FROM usage_sessions WHERE user_id = ?').bind(userId),
-    env.DB.prepare('DELETE FROM account_events WHERE user_id = ?').bind(userId),
+    env.DB.prepare('DELETE FROM account_daily WHERE user_id = ?').bind(userId),
     env.DB.prepare('DELETE FROM users WHERE id = ?').bind(userId), // cascades devices, profile, sessions, sync_log
   ]);
   await purgePublic(u?.username);
@@ -117,6 +160,11 @@ async function deleteAccountFor(env: Env, userId: string) {
 // ----- edge cache for public profiles (60 s; purged on profile/username changes in this location) -----
 const publicCacheKey = (username: string) => new Request(`https://public-cache.internal/${username.toLowerCase()}`);
 const avatarCacheKey = (username: string) => new Request(`https://public-cache.internal/avatar/${username.toLowerCase()}`);
+/** Forgets the cached storage-ceiling counts (see cachedRowCount) after this user's rows were deleted. */
+async function purgeRowCounts(userId: string) {
+  for (const t of ['usage_daily', 'usage_sessions', 'account_daily']) await caches.default.delete(rowCountKey(t, userId)).catch(() => false);
+}
+
 async function purgePublic(...usernames: (string | null | undefined)[]) {
   for (const u of usernames) {
     if (!u) continue;
@@ -265,7 +313,7 @@ function validBucket(b: any): boolean {
   );
 }
 
-const ingestDaily: Route = async (req, env) => {
+const ingestDaily: Route = async (req, env, _p, ctx) => {
   const d = await requireDevice(req, env);
   await rateLimit(env, 'ingest', `ingest:${d.id}`);
   const body = await readJson(req);
@@ -277,10 +325,8 @@ const ingestDaily: Route = async (req, env) => {
   if (deletes.some((b) => !validBucketKey(b))) throw new HttpError(400, 'Invalid delete key');
   const healthJson = body.health && typeof body.health === 'object' ? JSON.stringify(body.health) : null;
   if (healthJson && healthJson.length > MAX_HEALTH_BYTES) throw new HttpError(413, 'health too large');
-  if (buckets.length) {
-    const n = await env.DB.prepare('SELECT COUNT(*) AS n FROM usage_daily WHERE user_id = ?').bind(d.user_id).first<{ n: number }>();
-    if ((n?.n ?? 0) + buckets.length > MAX_DAILY_ROWS_PER_USER) throw new HttpError(413, 'Account storage limit reached. Contact support.');
-  }
+  await assertRoom(env, ctx, 'usage_daily', d.user_id, buckets.length, MAX_DAILY_ROWS_PER_USER);
+  await spendRowBudget(env, d.user_id, buckets.length + deletes.length);
 
   // D1 caps bound parameters per query, so batches travel as one JSON parameter through json_each.
   const at = now();
@@ -325,7 +371,7 @@ const ingestDaily: Route = async (req, env) => {
   return json({ ok: true, upserted: buckets.length, deleted: deletes.length, data_reset_at: reset?.data_reset_at ?? null });
 };
 
-const ingestSessions: Route = async (req, env) => {
+const ingestSessions: Route = async (req, env, _p, ctx) => {
   const d = await requireDevice(req, env);
   await rateLimit(env, 'ingest', `ingest:${d.id}`);
   const { sessions } = await readJson(req);
@@ -335,8 +381,8 @@ const ingestSessions: Route = async (req, env) => {
     validInstant(s.first_at) && validInstant(s.last_at) && isNonNegInt(s.event_count));
   if (!ok) throw new HttpError(400, 'Invalid session row');
   if (sessions.length) {
-    const n = await env.DB.prepare('SELECT COUNT(*) AS n FROM usage_sessions WHERE user_id = ?').bind(d.user_id).first<{ n: number }>();
-    if ((n?.n ?? 0) + sessions.length > MAX_SESSION_ROWS_PER_USER) throw new HttpError(413, 'Account storage limit reached. Contact support.');
+    await assertRoom(env, ctx, 'usage_sessions', d.user_id, sessions.length, MAX_SESSION_ROWS_PER_USER);
+    await spendRowBudget(env, d.user_id, sessions.length);
     // Stored as canonical ISO strings: the window queries and cleanup compare them as text.
     const rows = sessions.map((s: any) => ({ ...s, first_at: new Date(s.first_at).toISOString(), last_at: new Date(s.last_at).toISOString() }));
     await env.DB.prepare(
@@ -351,66 +397,79 @@ const ingestSessions: Route = async (req, env) => {
   return json({ ok: true, upserted: sessions.length });
 };
 
-/** Account-scoped events (Cursor CSV, OpenRouter), deduped per user by dedupe_key. */
-const ingestEvents: Route = async (req, env) => {
+function validAccountBucket(b: any): boolean {
+  return (
+    validBucketKey(b) && SOURCE_SCOPE[b.usage_source as keyof typeof SOURCE_SCOPE] === 'account' &&
+    isNonNegInt(b.event_count) && isNonNegInt(b.incomplete_events) && BUCKET_FIELDS.every((f) => b[f] === null || isNonNegInt(b[f])) &&
+    nullableNum(b.cost_usd) && nullableNum(b.billed_cost_usd) && (b.unpriced_events === undefined || isNonNegInt(b.unpriced_events))
+  );
+}
+
+/**
+ * Account-scoped daily totals (Cursor CSV, OpenRouter): one row per user, day, tool and model, shared by all of the
+ * user's machines. Which upload wins when two disagree:
+ *  - Cursor: a CSV export holds the whole account's usage for its date range, so for any day the more complete
+ *    export has at least as many requests. The larger day total is kept: overlapping exports from several machines
+ *    never add up twice, and a day cut off at the edge of one export fills in from a later one.
+ *  - OpenRouter: its API reports finished day totals, which it can revise, so the latest upload wins.
+ * Deletes come from the machine that uploaded the key (say, after a billing-mode change re-keys its rows).
+ */
+const ingestAccountDaily: Route = async (req, env, _p, ctx) => {
   const d = await requireDevice(req, env);
   await rateLimit(env, 'ingest', `ingest:${d.id}`);
-  const { events } = await readJson(req, 5_000_000);
-  if (!Array.isArray(events) || events.length > MAX_EVENT_BATCH) throw new HttpError(400, `Send 1–${MAX_EVENT_BATCH} events per request`);
-  for (let i = 0; i < events.length; i++) {
-    const { cost_usd, billed_cost_usd, ...rest } = events[i] ?? {};
-    const err = validateRecord({ ...rest, synced_at: null });
-    if (err) throw new HttpError(400, `Event ${i}: ${err}`);
-    if (!nullableNum(cost_usd) || !nullableNum(billed_cost_usd)) throw new HttpError(400, `Event ${i}: invalid cost`);
-    if (!validInstant(rest.occurred_at)) throw new HttpError(400, `Event ${i}: occurred_at out of range`);
-    if (SOURCE_SCOPE[rest.usage_source as keyof typeof SOURCE_SCOPE] !== 'account') {
-      throw new HttpError(400, `Event ${i}: ${rest.usage_source} is uploaded as daily aggregates, not events`);
-    }
+  const body = await readJson(req);
+  const buckets: any[] = Array.isArray(body.buckets) ? body.buckets : [];
+  const deletes: any[] = Array.isArray(body.deletes) ? body.deletes : [];
+  if (buckets.length > MAX_BATCH || deletes.length > MAX_BATCH) throw new HttpError(413, 'Too many items');
+  const bad = buckets.findIndex((b) => !validAccountBucket(b));
+  if (bad >= 0) throw new HttpError(400, `Invalid account bucket at index ${bad}`);
+  if (deletes.some((b) => !validBucketKey(b) || SOURCE_SCOPE[b.usage_source as keyof typeof SOURCE_SCOPE] !== 'account')) {
+    throw new HttpError(400, 'Invalid delete key');
   }
-  const existing = await env.DB.prepare('SELECT COUNT(*) AS n FROM account_events WHERE user_id = ?').bind(d.user_id).first<{ n: number }>();
-  if ((existing?.n ?? 0) + events.length > MAX_ACCOUNT_EVENTS_PER_USER) throw new HttpError(413, 'Account storage limit reached. Contact support.');
+  await assertRoom(env, ctx, 'account_daily', d.user_id, buckets.length, MAX_ACCOUNT_DAILY_ROWS_PER_USER);
+  await spendRowBudget(env, d.user_id, buckets.length + deletes.length);
   const at = now();
-  const rows = events.map((e: any) => ({
-    dedupe_key: e.dedupe_key, provider: e.provider, model_id: e.model_id, occurred_at: new Date(e.occurred_at).toISOString(),
-    input_tokens: e.input_tokens, output_tokens: e.output_tokens, cache_read_tokens: e.cache_read_tokens,
-    cache_write_tokens: e.cache_write_tokens, event_count: e.event_count, usage_source: e.usage_source, measurement_type: e.measurement_type,
-    billing_mode: e.billing_mode, provider_fields: JSON.stringify(sanitizeProviderFields(e.provider_fields)),
-    cost_usd: e.cost_usd ?? null, billed_cost_usd: e.billed_cost_usd ?? null,
-  }));
-  const res = await env.DB.prepare(
-    `INSERT INTO account_events (user_id, dedupe_key, provider, model_id, occurred_at, input_tokens, output_tokens,
-       cache_read_tokens, cache_write_tokens, event_count, usage_source, measurement_type, billing_mode, provider_fields, cost_usd, billed_cost_usd, synced_at)
-     SELECT ?1, json_extract(value, '$.dedupe_key'), json_extract(value, '$.provider'), json_extract(value, '$.model_id'),
-       json_extract(value, '$.occurred_at'), json_extract(value, '$.input_tokens'), json_extract(value, '$.output_tokens'),
-       json_extract(value, '$.cache_read_tokens'), json_extract(value, '$.cache_write_tokens'), json_extract(value, '$.event_count'),
-       json_extract(value, '$.usage_source'), json_extract(value, '$.measurement_type'), json_extract(value, '$.billing_mode'),
-       json_extract(value, '$.provider_fields'), json_extract(value, '$.cost_usd'), json_extract(value, '$.billed_cost_usd'), ?2
-     FROM json_each(?3) WHERE true
-     -- Cursor rows are immutable (duplicates ignored). OpenRouter days can be revised by the provider, so they upsert.
-     ON CONFLICT (user_id, dedupe_key) DO UPDATE SET
-       input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens, cache_read_tokens = excluded.cache_read_tokens,
-       cache_write_tokens = excluded.cache_write_tokens, event_count = excluded.event_count, cost_usd = excluded.cost_usd,
-       billed_cost_usd = excluded.billed_cost_usd, provider_fields = excluded.provider_fields, synced_at = excluded.synced_at
-     WHERE account_events.usage_source = 'openrouter_activity'`,
-  ).bind(d.user_id, at, JSON.stringify(rows)).run();
-  const inserted = res.meta.changes ?? 0;
-  await env.DB.prepare('INSERT INTO sync_log (user_id, device_id, kind, at, detail_json) VALUES (?, ?, ?, ?, ?)')
-    .bind(d.user_id, d.id, 'account_import', at, JSON.stringify({ received: events.length, inserted, duplicates: events.length - inserted })).run();
-  return json({ inserted, duplicates: events.length - inserted });
+  const stmts: D1PreparedStatement[] = [];
+  if (deletes.length) {
+    stmts.push(env.DB.prepare(
+      `DELETE FROM account_daily WHERE user_id = ?1 AND
+        (day || char(1) || provider || char(1) || usage_source || char(1) || model_id || char(1) || billing_mode || char(1) || measurement_type)
+        IN (SELECT json_extract(value, '$.day') || char(1) || json_extract(value, '$.provider') || char(1) ||
+                   json_extract(value, '$.usage_source') || char(1) || json_extract(value, '$.model_id') || char(1) ||
+                   json_extract(value, '$.billing_mode') || char(1) || json_extract(value, '$.measurement_type')
+            FROM json_each(?2))`,
+    ).bind(d.user_id, JSON.stringify(deletes)));
+  }
+  if (buckets.length) {
+    stmts.push(env.DB.prepare(
+      `INSERT INTO account_daily (user_id, day, provider, usage_source, model_id, billing_mode, measurement_type, event_count,
+         input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, incomplete_events, cost_usd, billed_cost_usd,
+         unpriced_events, synced_at)
+       SELECT ?1, json_extract(value, '$.day'), json_extract(value, '$.provider'), json_extract(value, '$.usage_source'),
+         json_extract(value, '$.model_id'), json_extract(value, '$.billing_mode'), json_extract(value, '$.measurement_type'),
+         json_extract(value, '$.event_count'), json_extract(value, '$.input_tokens'), json_extract(value, '$.output_tokens'),
+         json_extract(value, '$.cache_read_tokens'), json_extract(value, '$.cache_write_tokens'), json_extract(value, '$.incomplete_events'),
+         json_extract(value, '$.cost_usd'), json_extract(value, '$.billed_cost_usd'), COALESCE(json_extract(value, '$.unpriced_events'), 0), ?2
+       FROM json_each(?3) WHERE true
+       ON CONFLICT (user_id, day, provider, usage_source, model_id, billing_mode, measurement_type) DO UPDATE SET
+         event_count = excluded.event_count, input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens,
+         cache_read_tokens = excluded.cache_read_tokens, cache_write_tokens = excluded.cache_write_tokens,
+         incomplete_events = excluded.incomplete_events, cost_usd = excluded.cost_usd, billed_cost_usd = excluded.billed_cost_usd,
+         unpriced_events = excluded.unpriced_events, synced_at = excluded.synced_at
+       WHERE excluded.usage_source = 'openrouter_activity' OR excluded.event_count > account_daily.event_count`,
+    ).bind(d.user_id, at, JSON.stringify(buckets)));
+  }
+  if (!stmts.length) return json({ ok: true, upserted: 0, deleted: 0 });
+  stmts.push(env.DB.prepare('INSERT INTO sync_log (user_id, device_id, kind, at, detail_json) VALUES (?, ?, ?, ?, ?)')
+    .bind(d.user_id, d.id, 'account_import', at, JSON.stringify({ buckets: buckets.length, deletes: deletes.length })));
+  await env.DB.batch(stmts);
+  return json({ ok: true, upserted: buckets.length, deleted: deletes.length });
 };
 
-function sanitizeProviderFields(pf: unknown): Record<string, string | number | boolean | null> {
-  const allowed = ['kind', 'max_mode', 'cache_write_semantics', 'total_tokens_reported', 'reasoning_tokens', 'provider_name', 'input_includes_cache'];
-  const out: Record<string, string | number | boolean | null> = {};
-  if (pf && typeof pf === 'object') {
-    for (const k of allowed) {
-      const v = (pf as any)[k];
-      if (v === null || typeof v === 'number' || typeof v === 'boolean') out[k] = v;
-      else if (typeof v === 'string') out[k] = v.slice(0, 80);
-    }
-  }
-  return out;
-}
+/** CLI 0.3.x uploaded Cursor/OpenRouter usage per request; it's stored per day now (see ingestAccountDaily). */
+const legacyIngestEvents: Route = async () => {
+  throw new HttpError(426, 'This version of tokenburn can no longer upload Cursor or OpenRouter usage. Update it: npm install -g use-tokenburn');
+};
 
 // ---------- public profile ----------
 
@@ -557,7 +616,7 @@ const webDashboard: Route = async (req, env) => {
     dailyRows(env, u.id, since),
     allTimeActivity(env, u.id),
     env.DB.prepare('SELECT is_public FROM profiles WHERE user_id = ?').bind(u.id).first<{ is_public: number }>(),
-    env.DB.prepare('SELECT EXISTS(SELECT 1 FROM usage_daily WHERE user_id = ?1) OR EXISTS(SELECT 1 FROM account_events WHERE user_id = ?1) AS any').bind(u.id).first<{ any: number }>(),
+    env.DB.prepare('SELECT EXISTS(SELECT 1 FROM usage_daily WHERE user_id = ?1) OR EXISTS(SELECT 1 FROM account_daily WHERE user_id = ?1) AS any').bind(u.id).first<{ any: number }>(),
     sessionCounts(env, u.id, since),
   ]);
   const data: DashboardData = {
@@ -773,7 +832,9 @@ const CSP = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-
 async function cleanup(env: Env) {
   const t = now();
   await env.DB.batch([
-    env.DB.prepare('DELETE FROM rate_limits WHERE window_start < ?').bind(Math.floor(Date.now() / 1000) - 3600),
+    // Request-rate windows last a minute; daily row budgets (budget:…) a day.
+    env.DB.prepare("DELETE FROM rate_limits WHERE window_start < ? AND (key NOT LIKE 'budget:%' OR window_start < ?)")
+      .bind(Math.floor(Date.now() / 1000) - 3600, Math.floor(Date.now() / 1000) - 2 * 86400),
     env.DB.prepare('DELETE FROM login_requests WHERE expires_at < ?').bind(t),
     env.DB.prepare('DELETE FROM auth_sessions WHERE expires_at < ?').bind(t),
     env.DB.prepare('DELETE FROM sync_log WHERE at < ?').bind(new Date(Date.now() - 90 * 864e5).toISOString()),
@@ -855,7 +916,8 @@ const routes: [string, RegExp, Route][] = [
   ['POST', /^\/api\/me\/revoke$/, apiRevokeSelf],
   ['POST', /^\/api\/ingest\/daily$/, ingestDaily],
   ['POST', /^\/api\/ingest\/sessions$/, ingestSessions],
-  ['POST', /^\/api\/ingest\/events$/, ingestEvents],
+  ['POST', /^\/api\/ingest\/account-daily$/, ingestAccountDaily],
+  ['POST', /^\/api\/ingest\/events$/, legacyIngestEvents],
   ['GET', /^\/api\/public\/(?<username>[\w-]+)$/, publicProfileJson],
   ['GET', /^\/api\/avatar\/(?<username>[\w-]+)$/, publicAvatar],
 ];

@@ -8,6 +8,8 @@ export interface Env {
   GITHUB_CLIENT_SECRET?: string;
   /** "1" only in local .dev.vars: enables the no-GitHub dev login on localhost. */
   DEV_LOGIN?: string;
+  /** Rows one account may write per UTC day; defaults to DAILY_ROW_BUDGET in index.ts (tests set it low). */
+  DAILY_ROW_BUDGET?: string;
   /** Workers rate-limit bindings, if deployed as a Worker. On Pages they don't exist and D1 is used instead. */
   LOGIN_LIMITER?: RateLimit;
   INGEST_LIMITER?: RateLimit;

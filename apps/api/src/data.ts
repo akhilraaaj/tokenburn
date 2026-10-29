@@ -5,7 +5,7 @@ import type { Env } from './util.ts';
 
 export { rowTokens, type DailyRow, type Highlights };
 
-/** Device-scoped aggregates and account-scoped events, combined per day/model. SUM over all-NULL stays NULL ("not reported"). */
+/** Device-scoped and account-scoped daily totals, combined per day/model. SUM over all-NULL stays NULL ("not reported"). */
 export async function dailyRows(env: Env, userId: string, since: string): Promise<DailyRow[]> {
   const { results } = await env.DB.prepare(
     `SELECT provider, usage_source, model_id, day, billing_mode, measurement_type,
@@ -18,11 +18,9 @@ export async function dailyRows(env: Env, userId: string, since: string): Promis
               cache_read_tokens, cache_write_tokens, incomplete_events, cost_usd, billed_cost_usd, unpriced_events
        FROM usage_daily WHERE user_id = ?1 AND day >= ?2
        UNION ALL
-       SELECT provider, usage_source, model_id, substr(occurred_at, 1, 10), billing_mode, measurement_type, event_count, input_tokens,
-              output_tokens, cache_read_tokens, cache_write_tokens,
-              CASE WHEN input_tokens IS NULL OR output_tokens IS NULL THEN event_count ELSE 0 END,
-              cost_usd, billed_cost_usd, CASE WHEN cost_usd IS NULL THEN event_count ELSE 0 END
-       FROM account_events WHERE user_id = ?1 AND occurred_at >= ?2
+       SELECT provider, usage_source, model_id, day, billing_mode, measurement_type, event_count, input_tokens, output_tokens,
+              cache_read_tokens, cache_write_tokens, incomplete_events, cost_usd, billed_cost_usd, unpriced_events
+       FROM account_daily WHERE user_id = ?1 AND day >= ?2
      )
      GROUP BY provider, usage_source, model_id, day, billing_mode, measurement_type
      ORDER BY day`,
@@ -48,9 +46,9 @@ export async function allTimeDays(env: Env, userId: string): Promise<DayTotal[]>
               COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0) + COALESCE(cache_read_tokens, 0) + COALESCE(cache_write_tokens, 0) AS tokens
        FROM usage_daily WHERE user_id = ?1
        UNION ALL
-       SELECT substr(occurred_at, 1, 10), event_count,
+       SELECT day, event_count,
               COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0) + COALESCE(cache_read_tokens, 0) + COALESCE(cache_write_tokens, 0)
-       FROM account_events WHERE user_id = ?1
+       FROM account_daily WHERE user_id = ?1
      ) GROUP BY day`,
   ).bind(userId).all<DayTotal>();
   return results;

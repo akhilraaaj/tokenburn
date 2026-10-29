@@ -1,11 +1,10 @@
-// Builds and uploads the sync payload. Only aggregates, hashed session keys and normalized
-// Cursor events leave the machine.
+// Builds and uploads the sync payload. Only daily totals and hashed session keys leave the machine.
 import crypto from 'node:crypto';
-import { aggregateDaily, bucketKey, estimateCost, uploadModelId, SOURCES, USAGE_SOURCES, type DailyBucket, type PriceTable, type UsageRecord } from '../../shared/src/index.ts';
+import { aggregateDaily, bucketKey, estimateCost, SOURCES, USAGE_SOURCES, type DailyBucket, type PriceTable } from '../../shared/src/index.ts';
 import type { Config } from './config.ts';
 import type { Store } from './store.ts';
 
-export const COLLECTOR_VERSION = '0.3.2';
+export const COLLECTOR_VERSION = '0.4.0';
 const sha = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
 
 export interface SessionUpload {
@@ -16,12 +15,20 @@ export interface SessionUpload {
   event_count: number;
 }
 
+type BucketKeyFields = Pick<DailyBucket, 'provider' | 'usage_source' | 'model_id' | 'day' | 'billing_mode' | 'measurement_type'>;
+
 export interface SyncPlan {
+  /** This machine's tools (Claude Code, Codex, ...): daily totals per device. */
   bucketUpserts: DailyBucket[];
-  bucketDeletes: Pick<DailyBucket, 'provider' | 'usage_source' | 'model_id' | 'day' | 'billing_mode' | 'measurement_type'>[];
+  bucketDeletes: BucketKeyFields[];
   sessionUpserts: SessionUpload[];
-  accountEvents: UsageRecord[];
-  hashes: { buckets: [string, string][]; sessions: [string, string][]; deletedBuckets: string[] };
+  /** Account-wide sources (Cursor CSV, OpenRouter): daily totals shared by all of the user's machines. */
+  accountUpserts: DailyBucket[];
+  accountDeletes: BucketKeyFields[];
+  hashes: {
+    buckets: [string, string][]; sessions: [string, string][]; deletedBuckets: string[];
+    accountBuckets: [string, string][]; deletedAccountBuckets: string[];
+  };
 }
 
 /**
@@ -33,30 +40,38 @@ export function uploadableDay(day: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(day) && day >= '2020-01-01' && Date.parse(day + 'T00:00:00Z') <= Date.now() + 864e5;
 }
 
-export function planSync(store: Store, cfg: Config, prices: PriceTable = {}): SyncPlan {
-  const local = store.eventsIn(USAGE_SOURCES.filter((u) => SOURCES[u].scope === 'device'));
-  const { buckets, sessions } = aggregateDaily(local, (s) => SOURCES[s].sessions, prices);
-  const uploadedB = store.uploadedHashes('uploaded_buckets');
-  const uploadedS = store.uploadedHashes('uploaded_sessions');
-
-  const bucketUpserts: DailyBucket[] = [];
-  const hb: [string, string][] = [];
+/** Buckets that changed since this machine last uploaded them, and uploaded keys that no longer exist. */
+function diffBuckets(buckets: DailyBucket[], uploaded: Map<string, string>) {
+  const upserts: DailyBucket[] = [];
+  const hashes: [string, string][] = [];
   const present = new Set<string>();
   for (const b of buckets) {
     if (!uploadableDay(b.day)) continue; // see uploadableDay
     const k = bucketKey(b);
     present.add(k);
     const h = sha(JSON.stringify(b));
-    if (uploadedB.get(k) !== h) {
-      bucketUpserts.push(b);
-      hb.push([k, h]);
+    if (uploaded.get(k) !== h) {
+      upserts.push(b);
+      hashes.push([k, h]);
     }
   }
-  const deletedBuckets = [...uploadedB.keys()].filter((k) => !present.has(k));
-  const bucketDeletes = deletedBuckets.map((k) => {
+  const deletedKeys = [...uploaded.keys()].filter((k) => !present.has(k));
+  const deletes = deletedKeys.map((k) => {
     const [provider, usage_source, model_id, day, billing_mode, measurement_type] = k.split('\u0001');
-    return { provider, usage_source, model_id, day, billing_mode, measurement_type } as SyncPlan['bucketDeletes'][number];
+    return { provider, usage_source, model_id, day, billing_mode, measurement_type } as BucketKeyFields;
   });
+  return { upserts, hashes, deletes, deletedKeys };
+}
+
+export function planSync(store: Store, cfg: Config, prices: PriceTable = {}): SyncPlan {
+  const local = store.eventsIn(USAGE_SOURCES.filter((u) => SOURCES[u].scope === 'device'));
+  const { buckets, sessions } = aggregateDaily(local, (s) => SOURCES[s].sessions, prices);
+  const device = diffBuckets(buckets, store.uploadedHashes('uploaded_buckets'));
+  // Cursor and OpenRouter go up as daily totals too (a long Cursor history is tens of thousands of requests but only
+  // a few rows per day); the server keeps the right one when several machines upload the same day.
+  const accountRecords = store.eventsIn(USAGE_SOURCES.filter((u) => SOURCES[u].scope === 'account'));
+  const account = diffBuckets(aggregateDaily(accountRecords, () => false, prices).buckets, store.uploadedHashes('uploaded_account_buckets'));
+  const uploadedS = store.uploadedHashes('uploaded_sessions');
 
   const sessionUpserts: SessionUpload[] = [];
   const hs: [string, string][] = [];
@@ -72,9 +87,47 @@ export function planSync(store: Store, cfg: Config, prices: PriceTable = {}): Sy
   }
 
   return {
-    bucketUpserts, bucketDeletes, sessionUpserts,
-    accountEvents: store.unsyncedEvents(USAGE_SOURCES.filter((u) => SOURCES[u].scope === 'account')),
-    hashes: { buckets: hb, sessions: hs, deletedBuckets },
+    bucketUpserts: device.upserts, bucketDeletes: device.deletes, sessionUpserts,
+    accountUpserts: account.upserts, accountDeletes: account.deletes,
+    hashes: {
+      buckets: device.hashes, sessions: hs, deletedBuckets: device.deletedKeys,
+      accountBuckets: account.hashes, deletedAccountBuckets: account.deletedKeys,
+    },
+  };
+}
+
+/**
+ * Rows one sync run uploads at most. Even years of history are usually a few thousand rows; anything larger goes up
+ * over the next runs (every 30 minutes) instead of all at once, so one machine can't spend the account's daily
+ * server budget, or the shared database's, in a single burst.
+ */
+export const MAX_ROWS_PER_RUN = 2000;
+
+/** The part of `plan` that fits in `max` rows (deletes first, then daily totals, then sessions), and whether any is left. */
+export function capPlan(plan: SyncPlan, max = MAX_ROWS_PER_RUN): { plan: SyncPlan; more: boolean } {
+  let room = max;
+  const take = (n: number) => {
+    const k = Math.min(n, room);
+    room -= k;
+    return k;
+  };
+  const bd = take(plan.bucketDeletes.length), ad = take(plan.accountDeletes.length);
+  const bu = take(plan.bucketUpserts.length), au = take(plan.accountUpserts.length), su = take(plan.sessionUpserts.length);
+  const more = bd < plan.bucketDeletes.length || ad < plan.accountDeletes.length || bu < plan.bucketUpserts.length ||
+    au < plan.accountUpserts.length || su < plan.sessionUpserts.length;
+  if (!more) return { plan, more };
+  return {
+    more,
+    plan: {
+      bucketDeletes: plan.bucketDeletes.slice(0, bd), accountDeletes: plan.accountDeletes.slice(0, ad),
+      bucketUpserts: plan.bucketUpserts.slice(0, bu), accountUpserts: plan.accountUpserts.slice(0, au),
+      sessionUpserts: plan.sessionUpserts.slice(0, su),
+      hashes: {
+        deletedBuckets: plan.hashes.deletedBuckets.slice(0, bd), deletedAccountBuckets: plan.hashes.deletedAccountBuckets.slice(0, ad),
+        buckets: plan.hashes.buckets.slice(0, bu), accountBuckets: plan.hashes.accountBuckets.slice(0, au),
+        sessions: plan.hashes.sessions.slice(0, su),
+      },
+    },
   };
 }
 
@@ -126,19 +179,6 @@ export async function api(cfg: Config, method: string, p: string, body?: unknown
 
 const BATCH = 500;
 
-/** Account events go up with their best-known cost (tool-reported, else list-price estimate) and the billed part. */
-export function accountEventPayload(e: UsageRecord, prices: PriceTable) {
-  const { synced_at, cost_usd, cost_kind, ...rest } = e;
-  const known = cost_kind && typeof cost_usd === 'number' ? cost_usd : null;
-  const { est_cost_usd, ...upload } = rest;
-  return {
-    ...upload,
-    model_id: uploadModelId(e.model_id),
-    cost_usd: known ?? est_cost_usd ?? estimateCost(prices, e),
-    billed_cost_usd: cost_kind === 'billed' ? known : null,
-  };
-}
-
 const HEARTBEAT_MS = 6 * 3600e3;
 
 export async function runSync(
@@ -151,15 +191,13 @@ export async function runSync(
   // Nothing new locally: skip planning and the network entirely, except a periodic check-in so the
   // dashboard's "last sync" stays meaningful and server-side deletions are noticed.
   if (!opts.force && !store.isDirty() && lastSync && Date.now() - Date.parse(lastSync) < HEARTBEAT_MS) {
-    return { buckets: 0, deletedBuckets: 0, sessions: 0, accountInserted: 0, accountDuplicates: 0, skipped: true };
+    return { buckets: 0, deletedBuckets: 0, sessions: 0, accountDays: 0, more: false, skipped: true };
   }
   // A device's very first upload already sends everything, so a reset marker seen then needs no re-upload. Judged by
   // any past sync, not by uploaded buckets: a machine with only Cursor/OpenRouter rows never has any.
   const firstUpload = !lastSync;
   const generation = store.dirtyGeneration(); // what this run uploads; later writes stay pending
-  const plan = planSync(store, cfg, prices);
-  let accountInserted = 0;
-  let accountDuplicates = 0;
+  const { plan, more } = capPlan(planSync(store, cfg, prices));
   let serverReset: string | null = null;
 
   // Buckets are replace-by-key, so partial failure is safe to retry.
@@ -189,21 +227,22 @@ export async function runSync(
   }
   store.setUploaded('uploaded_sessions', plan.hashes.sessions, []);
 
-  for (let i = 0; i < plan.accountEvents.length; i += BATCH) {
-    const chunk = plan.accountEvents.slice(i, i + BATCH);
-    const r = await api(cfg, 'POST', '/api/ingest/events', { events: chunk.map((e) => accountEventPayload(e, prices)) });
-    accountInserted += r.inserted;
-    accountDuplicates += r.duplicates;
-    store.markSynced(chunk.map((e) => e.dedupe_key), at);
+  // Also replace-by-key (the server decides which of several machines' day totals to keep), so safe to retry.
+  for (let i = 0; i < Math.max(plan.accountUpserts.length, plan.accountDeletes.length); i += BATCH) {
+    await api(cfg, 'POST', '/api/ingest/account-daily', {
+      buckets: plan.accountUpserts.slice(i, i + BATCH),
+      deletes: plan.accountDeletes.slice(i, i + BATCH),
+    });
   }
+  store.setUploaded('uploaded_account_buckets', plan.hashes.accountBuckets, plan.hashes.deletedAccountBuckets);
   store.setMeta('last_sync_at', at);
-  store.clearDirty(generation);
+  if (!more) store.clearDirty(generation); // otherwise the next run picks up where this one stopped
   return {
     buckets: plan.bucketUpserts.length,
-    deletedBuckets: plan.bucketDeletes.length,
+    deletedBuckets: plan.bucketDeletes.length + plan.accountDeletes.length,
     sessions: plan.sessionUpserts.length,
-    accountInserted,
-    accountDuplicates,
+    accountDays: plan.accountUpserts.length,
+    more,
     skipped: false,
   };
 }
@@ -212,7 +251,9 @@ export interface SyncResult {
   buckets: number;
   deletedBuckets: number;
   sessions: number;
-  accountInserted: number;
-  accountDuplicates: number;
+  /** Cursor/OpenRouter daily totals uploaded. */
+  accountDays: number;
+  /** The run hit MAX_ROWS_PER_RUN; the rest goes up on the next sync. */
+  more: boolean;
   skipped: boolean;
 }

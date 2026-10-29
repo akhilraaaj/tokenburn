@@ -45,6 +45,8 @@ export class Store {
       );
       CREATE TABLE IF NOT EXISTS uploaded_buckets (bucket_key TEXT PRIMARY KEY, hash TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS uploaded_sessions (session_key TEXT PRIMARY KEY, hash TEXT NOT NULL);
+      -- Account-scoped daily totals (Cursor, OpenRouter) this machine uploaded, tracked apart from its device buckets.
+      CREATE TABLE IF NOT EXISTS uploaded_account_buckets (bucket_key TEXT PRIMARY KEY, hash TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       -- Last-seen cumulative values for sources that only expose running totals (e.g. Hermes).
       CREATE TABLE IF NOT EXISTS snapshots (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -195,21 +197,10 @@ export class Store {
     return (rows as Record<string, any>[]).map(rowToRecord);
   }
 
-  unsyncedEvents(usageSources: string[]): UsageRecord[] {
-    if (!usageSources.length) return [];
-    const q = `SELECT * FROM events WHERE synced_at IS NULL AND usage_source IN (${usageSources.map(() => '?').join(',')})`;
-    return (this.db.prepare(q).all(...usageSources) as Record<string, any>[]).map(rowToRecord);
-  }
-
   deleteEvents(provider?: string) {
     if (provider) this.db.prepare('DELETE FROM events WHERE provider = ?').run(provider);
     else this.db.exec('DELETE FROM events');
     this.markDirty();
-  }
-
-  markSynced(keys: string[], at: string) {
-    const stmt = this.db.prepare('UPDATE events SET synced_at = ? WHERE dedupe_key = ?');
-    this.transaction(() => keys.forEach((k) => stmt.run(at, k)));
   }
 
   setBillingMode(provider: string, mode: string) {
@@ -242,14 +233,14 @@ export class Store {
     this.db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').run(key, value);
   }
 
-  uploadedHashes(table: 'uploaded_buckets' | 'uploaded_sessions'): Map<string, string> {
-    const col = table === 'uploaded_buckets' ? 'bucket_key' : 'session_key';
+  uploadedHashes(table: UploadedTable): Map<string, string> {
+    const col = table === 'uploaded_sessions' ? 'session_key' : 'bucket_key';
     const rows = this.db.prepare(`SELECT ${col} AS k, hash FROM ${table}`).all() as { k: string; hash: string }[];
     return new Map(rows.map((r) => [r.k, r.hash]));
   }
 
-  setUploaded(table: 'uploaded_buckets' | 'uploaded_sessions', upserts: [string, string][], deletes: string[]) {
-    const col = table === 'uploaded_buckets' ? 'bucket_key' : 'session_key';
+  setUploaded(table: UploadedTable, upserts: [string, string][], deletes: string[]) {
+    const col = table === 'uploaded_sessions' ? 'session_key' : 'bucket_key';
     const put = this.db.prepare(`INSERT OR REPLACE INTO ${table} (${col}, hash) VALUES (?, ?)`);
     const del = this.db.prepare(`DELETE FROM ${table} WHERE ${col} = ?`);
     this.transaction(() => {
@@ -260,10 +251,13 @@ export class Store {
 
   /** Forget what the server has, e.g. after re-login or server-side deletion. */
   resetUploadState() {
-    this.db.exec("DELETE FROM uploaded_buckets; DELETE FROM uploaded_sessions; UPDATE events SET synced_at = NULL;");
+    this.db.exec('DELETE FROM uploaded_buckets; DELETE FROM uploaded_sessions; DELETE FROM uploaded_account_buckets; UPDATE events SET synced_at = NULL;');
     this.markDirty();
   }
 }
+
+/** What this machine last uploaded, per key, as a hash: device daily totals, sessions, account daily totals. */
+export type UploadedTable = 'uploaded_buckets' | 'uploaded_sessions' | 'uploaded_account_buckets';
 
 function rowToRecord(row: Record<string, any>): UsageRecord {
   return {

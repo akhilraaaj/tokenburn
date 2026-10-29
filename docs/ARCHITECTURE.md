@@ -14,7 +14,7 @@ web sign in with the same GitHub OAuth app.
 │ Cursor CSV exports in ~/Downloads              │  ├─ HTTPS ─► │  /@user   server-rendered HTML │
 │ OpenRouter /activity (key stays local)         │  │ totals   │ D1: users, devices, profiles,  │
 │        ↓                                       │  │ only     │     usage_daily, usage_sessions│
-│ tokenburn (Node CLI, background service)    │──┘         │     account_events             │
+│ tokenburn (Node CLI, background service)    │──┘         │     account_daily              │
 │   ~/.tokenburn/collector.db                 │            └────────────────────────────────┘
 └────────────────────────────────────────────────┘                     ↑ GitHub device flow (login)
 ```
@@ -60,8 +60,13 @@ Each local source implements `LocalSource` (`roots`, `billing`, incremental `sca
 
 * **device** (Claude Code, Codex, OpenCode, Gemini CLI, Grok CLI, Hermes): collected from this machine's files
   and uploaded as replace-by-key daily aggregates per device, plus salted-hash session summaries.
-* **account** (Cursor CSV, OpenRouter): may arrive from several machines, so normalized rows are uploaded
-  and deduped on the server (`INSERT OR IGNORE` on `(user_id, dedupe_key)`).
+* **account** (Cursor CSV, OpenRouter): may arrive from several machines. Requests are deduped locally and
+  uploaded as daily totals per user (`account_daily`, one row per day, tool and model). When machines disagree the
+  server keeps the larger Cursor day (an export covers the whole account for its range, so the more complete one
+  wins) and the latest OpenRouter day (the provider revises its daily totals).
+* **Budgets** (D1 free plan: 100k rows written/day for the whole app): each account may write 20k rows per UTC day,
+  storage ceilings are counted at most hourly, and the CLI uploads at most 2,000 rows per run, continuing on the
+  next. Static files are served by Pages directly (`_routes.json`), not through the Worker.
 
 Incremental strategies: JSONL byte offsets with partial-line handling (Claude Code, Codex, Gemini),
 SQLite watermarks (Grok CLI `id`, OpenCode `time_updated`), snapshot deltas (Hermes running totals),
@@ -90,7 +95,7 @@ line only when something changed or failed (`~/.tokenburn/sync.log`, self-trimmi
 error for `tokenburn status`. `sync --auto` never prompts and does nothing until the user has approved
 the first sync interactively. `tokenburn watch` remains available for real-time syncing in a terminal.
 
-## Production hardening (pre-launch review, 2026-10-25)
+## Production hardening
 
 * **Devices:** sign-out (`logout`/`forget`) and 180-day idle expiry *revoke* the token (`devices.revoked_at`)
   and keep the machine's history. Signing in again sends the old token, and the server resumes the same
