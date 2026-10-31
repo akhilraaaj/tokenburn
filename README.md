@@ -107,15 +107,15 @@ npm run build:cli
 ## Deploy (Cloudflare Pages)
 
 The site, API and `/@username` previews deploy as one **Cloudflare Pages** project
-(`https://tokenburn.pages.dev`). `npm run build -w @tokenburn/api` builds the React app into
+(`https://tokenburn.site`). `npm run build -w @tokenburn/api` builds the React app into
 `apps/web/dist` and bundles the API into `apps/web/dist/_worker.js` (Pages "advanced mode").
 
 1. Log in: `cd apps/api && npx wrangler login`
 2. Database (once): `npx wrangler d1 create tokenburn`, then put the `database_id` in `apps/api/wrangler.jsonc`.
 3. Create the Pages project (once): `npx wrangler pages project create tokenburn --production-branch main`
    (your URL is `https://<project>.pages.dev`; Cloudflare adds a suffix if the name is taken).
-4. GitHub OAuth app (github.com/settings/developers → New OAuth App): homepage `https://tokenburn.pages.dev`,
-   callback `https://tokenburn.pages.dev/auth/callback`, tick **Enable Device Flow**. Put the Client ID in
+4. GitHub OAuth app (github.com/settings/developers → New OAuth App): homepage `https://tokenburn.site`,
+   callback `https://tokenburn.site/auth/callback`, tick **Enable Device Flow**. Put the Client ID in
    `apps/api/wrangler.jsonc` (`vars.GITHUB_CLIENT_ID`) and store the secret:
    `npx wrangler pages secret put GITHUB_CLIENT_SECRET --project-name tokenburn`
 5. Deploy (applies D1 migrations, builds, uploads): `npm run deploy -w @tokenburn/api`

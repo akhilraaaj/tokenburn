@@ -11,4 +11,4 @@ Disallow: /welcome
 Disallow: /dashboard
 Disallow: /settings
 
-Sitemap: https://tokenburn.pages.dev/sitemap.xml
+Sitemap: https://tokenburn.site/sitemap.xml

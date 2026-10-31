@@ -9,7 +9,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const ssrDir = `${root}dist-ssr`;
 const { render, FAQ, PRERENDERED_AT } = await import(pathToFileURL(`${ssrDir}/entry-server.js`).href);
 
-const SITE = 'https://tokenburn.pages.dev';
+const SITE = 'https://tokenburn.site';
 const DESCRIPTION =
   'Track AI coding usage across Claude Code, Cursor, Codex, Gemini CLI and more on your machine. A private dashboard for tokens, models, streaks and estimated cost, and an optional public profile. Your prompts and code never leave your computer.';
 

@@ -13,7 +13,7 @@ const apiDir = path.resolve(import.meta.dirname, '..');
 
 /** A small index.html shaped like the real build: template meta tags, landing JSON-LD and a prerendered root. */
 const SHELL = `<!doctype html><html><head><title>tokenburn · landing</title>
-<meta name="description" content="Landing description"><link rel="canonical" href="https://tokenburn.pages.dev/">
+<meta name="description" content="Landing description"><link rel="canonical" href="https://tokenburn.site/">
 <meta property="og:title" content="Landing"><meta property="og:type" content="website"><meta name="twitter:card" content="summary_large_image">
 <script type="application/ld+json">{"@type":"FAQPage"}</script></head>
 <body><div id="root"><main><h1>Every token you burn</h1></main></div></body></html>`;
@@ -147,7 +147,7 @@ describe('/@username', () => {
     expect(count(html, 'name="description"')).toBe(1);
     expect(count(html, 'property="og:title"')).toBe(1);
     expect(html).not.toContain('Landing description');
-    expect(html).toContain('<link rel="canonical" href="https://tokenburn.pages.dev/@alice">');
+    expect(html).toContain('<link rel="canonical" href="https://tokenburn.site/@alice">');
     expect(html).toContain('<meta property="og:type" content="profile">');
     expect(html).toContain('"@type":"ProfilePage"');
     expect(html).not.toContain('FAQPage');
@@ -273,8 +273,8 @@ describe('sitemap and API errors', () => {
     const res = await get('/sitemap.xml');
     expect(res.headers.get('content-type')).toContain('application/xml');
     const xml = await res.text();
-    expect(xml).toContain('<loc>https://tokenburn.pages.dev/</loc>');
-    expect(xml).toContain('<loc>https://tokenburn.pages.dev/@alice</loc>');
+    expect(xml).toContain('<loc>https://tokenburn.site/</loc>');
+    expect(xml).toContain('<loc>https://tokenburn.site/@alice</loc>');
     expect(xml).not.toContain('@bob');
   });
 

@@ -825,8 +825,8 @@ const sitemap: Route = async (req, env, _p, ctx) => {
   return res;
 };
 
-/** Same policy as apps/web/public/_headers. Inline styles are allowed (UI libraries inject <style>; CSS cannot run code); scripts are same-origin only. */
-const CSP = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+/** Same policy as apps/web/public/_headers. Inline styles are allowed (UI libraries inject <style>; CSS cannot run code). Scripts are same-origin plus Cloudflare Browser Insights / Web Analytics (dashboard-injected beacon). */
+const CSP = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' https://static.cloudflareinsights.com; connect-src 'self' https://cloudflareinsights.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
 
 /** Daily housekeeping: expired sign-ins/sessions, old sync history, old rate-limit windows. */
 async function cleanup(env: Env) {

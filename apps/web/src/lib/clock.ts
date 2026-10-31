@@ -34,7 +34,7 @@ export function useToday(): string {
   return useSyncExternalStore(noSubscribe, () => new Date(Date.now()).toISOString().slice(0, 10), () => new Date(buildNow).toISOString().slice(0, 10));
 }
 
-/** This page's host ("tokenburn.pages.dev", "localhost:5173"), the production host during prerender and hydration. */
+/** This page's host ("tokenburn.site", "localhost:5173"), the production host during prerender and hydration. */
 export function useHost(): string {
   return useSyncExternalStore(noSubscribe, () => window.location.host, () => SITE_HOST);
 }

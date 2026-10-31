@@ -31,7 +31,7 @@ const text = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').repla
 const attr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
 /** The production site; canonical URLs point here from every deployment (keep in sync with apps/web/index.html). */
-export const SITE_URL = 'https://tokenburn.pages.dev';
+export const SITE_URL = 'https://tokenburn.site';
 
 export interface PageMeta {
   title: string;

@@ -23,6 +23,6 @@
 
 ## Public data
 
-- Profile page: https://tokenburn.pages.dev/@{username}
-- Profile JSON: GET https://tokenburn.pages.dev/api/public/{username} (only the fields the owner chose to show)
-- Sitemap of public profiles: https://tokenburn.pages.dev/sitemap.xml
+- Profile page: https://tokenburn.site/@{username}
+- Profile JSON: GET https://tokenburn.site/api/public/{username} (only the fields the owner chose to show)
+- Sitemap of public profiles: https://tokenburn.site/sitemap.xml
