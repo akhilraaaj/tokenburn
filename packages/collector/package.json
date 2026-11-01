@@ -1,6 +1,6 @@
 {
   "name": "use-tokenburn",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Collect your AI coding usage (Claude Code, Codex, OpenCode, Gemini CLI, Cursor, ...) locally and publish a privacy-controlled /@username profile.",
   "license": "MIT",
   "repository": {
