@@ -5,3 +5,4 @@ dist/
 *.local.csv
 fixtures/*.local.json
 dist-ssr/
+packages/collector/LICENSE

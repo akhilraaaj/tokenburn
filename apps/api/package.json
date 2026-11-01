@@ -1,6 +1,7 @@
 {
   "name": "@tokenburn/api",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "build": "npm run build -w @tokenburn/web && esbuild src/index.ts --bundle --format=esm --platform=neutral --target=es2022 --outfile=../web/dist/_worker.js",

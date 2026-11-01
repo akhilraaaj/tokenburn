@@ -1,1 +1,1 @@
-{ "name": "@tokenburn/shared", "private": true, "type": "module", "exports": { ".": "./src/index.ts" } }
+{ "name": "@tokenburn/shared", "private": true, "license": "MIT", "type": "module", "exports": { ".": "./src/index.ts" } }

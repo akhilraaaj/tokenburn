@@ -3,7 +3,8 @@
 The `tokenburn` terminal app collects and syncs. The web app (`apps/web`: Vite + React + Tailwind) has a
 landing page, a private dashboard, settings and the public `/@username` profile. Everything deploys as one
 Cloudflare Pages project: the API (`apps/api/src`) is bundled to `_worker.js` in the site build ("advanced
-mode"), so it receives every request and serves the React app's files and talks to `/api/web/*` (cookie session) and `/api/public/*`. For `/@username` the
+mode"), so it receives every request: it serves the API (`/api/*` for the CLI, `/api/web/*` for the dashboard
+with a cookie session, `/api/public/*` for profiles) and the React app's files. For `/@username` the
 Worker injects the title and Open Graph tags into the HTML shell so shared links unfurl. Both the CLI and the
 web sign in with the same GitHub OAuth app.
 
@@ -11,11 +12,11 @@ web sign in with the same GitHub OAuth app.
 ┌──────────────── user's machine ────────────────┐            ┌────────── Cloudflare ──────────┐
 │ Claude Code · Codex · OpenCode · Gemini CLI    │            │ Worker (apps/api)              │
 │ Grok CLI · Hermes        (local files/SQLite)  │──┐         │  /api/*   JSON (device token)  │
-│ Cursor CSV exports in ~/Downloads              │  ├─ HTTPS ─► │  /@user   server-rendered HTML │
-│ OpenRouter /activity (key stays local)         │  │ totals   │ D1: users, devices, profiles,  │
-│        ↓                                       │  │ only     │     usage_daily, usage_sessions│
-│ tokenburn (Node CLI, background service)    │──┘         │     account_daily              │
-│   ~/.tokenburn/collector.db                 │            └────────────────────────────────┘
+│ Cursor CSV exports in ~/Downloads              │  ├─HTTPS─► │  /@user   server-rendered HTML │
+│ OpenRouter /activity (key stays local)         │  │ totals  │ D1: users, devices, profiles,  │
+│        ↓                                       │  │ only    │     usage_daily, usage_sessions│
+│ tokenburn (Node CLI, scheduled sync)           │──┘         │     account_daily              │
+│   ~/.tokenburn/collector.db                    │            └────────────────────────────────┘
 └────────────────────────────────────────────────┘                     ↑ GitHub device flow (login)
 ```
 
@@ -34,7 +35,7 @@ web sign in with the same GitHub OAuth app.
 the user code → the user approves at github.com/login/device → the CLI polls `POST /api/login/poll` → the
 server exchanges the code, reads the GitHub user id and login, **discards the GitHub token**, creates the
 account (username defaults to the GitHub login) and returns a device token. That device token (hashed at
-rest) is the only credential; there are no passwords or cookies. A local-only dev login exists when
+rest) is the CLI's only credential; there are no passwords. A local-only dev login exists when
 `DEV_LOGIN=1` and the request is to localhost.
 
 Dashboard sign-in uses GitHub's authorization-code flow (`/login` → github.com → `/auth/callback`, needs
@@ -75,14 +76,16 @@ and only usage tables are queried.
 
 ## What leaves the machine
 
-Daily per-model token totals, request counts, hashed session ids with first/last timestamps, Cursor and
-OpenRouter rows (no emails, no costs). Never: prompts, responses, tool args, code, paths, project names,
-hostnames, API keys.
+Daily per-model token totals, request counts and estimated costs, hashed session ids with first/last
+timestamps, and Cursor and OpenRouter daily totals (no emails). Each machine also sends a name, which
+defaults to its hostname (set another with `tokenburn login --name`) and is shown only to its owner.
+Never: prompts, responses, tool args, code, paths, project names, API keys.
 
 ## Display rules
 
-Per-tool totals, never a blended grand total (input/output semantics differ; see `SOURCES[*].inputNote`).
-"n/a" when a source can't report a metric. UTC days. No prices or cost estimates.
+Total tokens add up all tools, but input/output semantics differ between tools (see `SOURCES[*].inputNote`),
+so per-tool and per-model breakdowns are shown alongside. "n/a" when a source can't report a metric.
+Costs are always labelled as estimates. UTC days.
 
 ## Automatic sync
 
@@ -107,23 +110,22 @@ the first sync interactively. `tokenburn watch` remains available for real-time 
   `sync` always contacts the server. `delete --provider` clears only that tool's parse state.
 * **Limits:** rate limiting on sign-in (per IP) and ingest (per device): a fixed-window counter in D1 on
   Pages (no rate-limit binding there), or the Workers binding when deployed as a Worker; real-date validation
-  (2020-01-01 to tomorrow); per-account caps (200k daily rows, 500k account events); event batches ≤ 500;
-  health JSON ≤ 4 KB.
+  (2020-01-01 to tomorrow); per-account caps (200k daily rows, 200k session rows, 50k account daily rows);
+  upload batches ≤ 1,000 items; health JSON ≤ 4 KB.
 * **Privacy:** the public API is fixed at 90 days; best-day tokens and per-tool session counts are shown only
   when token totals / tools are public; local file paths in model ids are reduced to the file name before upload.
 * **Web:** CSP, `frame-ancestors 'none'`, nosniff, referrer policy and HSTS (`apps/web/public/_headers` and
   the Worker); `__Host-` session cookie in production; OAuth state cookie cleared after use; sign-in errors as fixed codes.
 * **Storage/cost:** `usage_daily` and `usage_sessions` are `WITHOUT ROWID`; device and account deletes remove
   child rows by their primary-key prefix (no table scans); daily cleanup (opportunistic from upload traffic on Pages, which has no cron) prunes expired sign-ins and sessions,
-  90-day sync history and sessions older than two years; public profiles are edge-cached for 60 s; logs sampled at 10%.
+  90-day sync history and sessions older than two years; public profiles are edge-cached for 60 s.
 
 ### Known limits and next steps at scale
 
 * At roughly 10k active users the Workers **Paid** plan ($5/month base) is needed; estimated total about
   $15/month at that size (requests + D1 writes). The free plan suits a beta of a few hundred users.
 * D1's 10 GB per-database cap is the long-term ceiling. Next steps when approaching it: integer surrogate
-  keys instead of UUID text, rolling Cursor events up into daily rows, and per-day session counts instead of
-  per-session rows.
+  keys instead of UUID text, and per-day session counts instead of per-session rows.
 * Codex: two different sessions whose *first* responses have identical token counts and model are deduped
   as one (fork copies are indistinguishable otherwise). Rare outside scripted `codex exec` runs.
 * Days are UTC everywhere (streaks shift for users far from UTC).
