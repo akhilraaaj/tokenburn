@@ -66,8 +66,11 @@ describe('Linux cron fallback', () => {
     expect(line).toBe(`*/30 * * * * HOME='/home/o' TOKENBURN_HOME='/home/o/.tt' '/usr/bin/node' '/home/o'\\''neil/cli.mjs' 'sync' '--auto' >> '/home/o/.tt/sync.log' 2>&1 # tokenburn-auto-sync`);
   });
   it('the generated line actually runs under sh', () => {
-    const line = renderCronLine([process.execPath, '-e', 'process.stdout.write(process.env.TOKENBURN_HOME)'], { TOKENBURN_HOME: "/tmp/it's ok" }, '/dev/stdout');
+    // A real log file, not /dev/stdout: on Linux, Node's child stdio is a socket, which sh can't reopen by path.
+    const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'tt-cron-')), "sync it's.log");
+    const line = renderCronLine([process.execPath, '-e', 'process.stdout.write(process.env.TOKENBURN_HOME)'], { TOKENBURN_HOME: "/tmp/it's ok" }, log);
     const command = line.replace(/^\*\/30 \* \* \* \* /, '').replace(/ # tokenburn-auto-sync$/, '');
-    expect(execFileSync('sh', ['-c', command], { encoding: 'utf8' })).toBe("/tmp/it's ok");
+    execFileSync('sh', ['-c', command]);
+    expect(fs.readFileSync(log, 'utf8')).toBe("/tmp/it's ok");
   });
 });
