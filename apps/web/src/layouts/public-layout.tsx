@@ -1,11 +1,13 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, Outlet, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
-import { Wordmark } from '@/components/brand';
+import { GitHubMark, Wordmark } from '@/components/brand';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { useToday } from '@/lib/clock';
 import { cn } from '@/lib/utils';
 import { useSession } from '@/session';
+
+const REPO_URL = 'https://github.com/akhilraaaj/tokenburn';
 
 /** Smooth-scroll to a landing section without putting #id in the address bar. */
 function scrollToSection(id: string) {
@@ -72,6 +74,9 @@ export function PublicLayout() {
             </nav>
           )}
           <div className="flex items-center gap-2">
+            <Button asChild variant="ghost" size="icon-sm" className="hidden text-muted-foreground hover:text-foreground sm:inline-flex">
+              <a href={REPO_URL} target="_blank" rel="noreferrer" aria-label="tokenburn on GitHub" title="Source on GitHub"><GitHubMark /></a>
+            </Button>
             <ThemeToggle />
             {/* While the session loads, an invisible Sign in holds the space so the header doesn't shift when it lands. */}
             {user ? (
@@ -160,11 +165,17 @@ function SiteFooter({ signedIn }: { signedIn: boolean }) {
               <a href="/login" className="w-fit text-muted-foreground font-medium transition-colors hover:text-foreground">Sign in</a>
             )}
             <SectionLink id="how" className="w-fit text-left text-muted-foreground font-medium transition-colors hover:text-foreground">Install the CLI</SectionLink>
+            <a href={REPO_URL} target="_blank" rel="noreferrer" className="inline-flex w-fit items-center gap-1.5 text-muted-foreground font-medium transition-colors hover:text-foreground">
+              <GitHubMark className="size-3.5" />GitHub
+            </a>
           </nav>
         </div>
       </div>
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-2 px-5 py-5 text-xs text-subtle font-medium sm:flex-row sm:items-center sm:justify-between sm:px-8">
-        <span>© {useToday().slice(0, 4)} tokenburn</span>
+        <span>
+          © {useToday().slice(0, 4)} tokenburn ·{' '}
+          <a href={REPO_URL} target="_blank" rel="noreferrer" className="transition-colors hover:text-foreground">Open source, MIT</a>
+        </span>
         <span>Usage is collected locally · costs are API list-price estimates</span>
       </div>
       {/* Drawn with ::after so the decorative wordmark isn't page text (screen readers, contrast checks). */}
