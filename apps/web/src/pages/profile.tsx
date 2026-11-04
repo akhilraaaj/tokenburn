@@ -52,18 +52,16 @@ function ShareButton({ url }: { url: string }) {
   );
 }
 
-/** Top-right of the profile header: Share for everyone, Edit profile for the owner. */
 function ProfileActions({ username, preview }: { username: string; preview: boolean }) {
   const { user } = useSession();
   const own = !preview && user?.username === username;
+  if (!own) return null;
   return (
     <div className="flex shrink-0 items-center gap-2 self-start">
-      {!preview && <ShareButton url={`${window.location.origin}/@${username}`} />}
-      {own && (
-        <Button asChild size="sm" aria-label="Edit profile">
-          <Link to="/dashboard/settings"><Pencil /><span className="max-sm:sr-only">Edit profile</span></Link>
-        </Button>
-      )}
+      <ShareButton url={`${window.location.origin}/@${username}`} />
+      <Button asChild size="sm" aria-label="Edit profile">
+        <Link to="/dashboard/settings"><Pencil /><span className="max-sm:sr-only">Edit profile</span></Link>
+      </Button>
     </div>
   );
 }

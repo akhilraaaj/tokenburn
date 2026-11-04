@@ -116,15 +116,15 @@ function Step({ n, title, description, state, optional, last, children }: {
       <span className="flex flex-col items-center">
         <span
           className={cn(
-            'num z-[1] flex size-8 flex-none items-center justify-center rounded-full text-sm font-medium transition-colors duration-300',
-            state === 'done' && 'bg-[var(--series-2)] text-[#1c0c04]',
-            state === 'active' && 'bg-[var(--series-2)] text-[#1c0c04] ring-[6px] ring-[color-mix(in_oklab,var(--series-2)_16%,transparent)] dark:ring-[color-mix(in_oklab,var(--series-2)_26%,transparent)]',
+            'num z-1 flex size-8 flex-none items-center justify-center rounded-full text-sm font-medium transition-colors duration-300',
+            state === 'done' && 'bg-(--series-2) text-white',
+            state === 'active' && 'bg-(--series-2) text-white ring-[6px] ring-[color-mix(in_oklab,var(--series-2)_16%,transparent)] dark:ring-[color-mix(in_oklab,var(--series-2)_26%,transparent)]',
             state === 'next' && 'border-2 bg-background text-subtle',
           )}
         >
           {state === 'done' ? <Check className="size-4" /> : n}
         </span>
-        {!last && <span className={cn('w-0.5 flex-1', state === 'done' ? 'bg-[var(--series-2)]' : 'bg-border')} />}
+        {!last && <span className={cn('w-0.5 flex-1', state === 'done' ? 'bg-(--series-2)' : 'bg-border')} />}
       </span>
       <div className={cn('grid min-w-0 content-start gap-4', !last && 'pb-10')}>
         <div className="grid gap-1 pt-1">
